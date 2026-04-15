@@ -1,0 +1,75 @@
+{
+  "entities": {
+    "Employee": {
+      "title": "Employee",
+      "description": "Healthcare worker details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "matricula": { "type": "string" },
+        "coren": { "type": "string" },
+        "role": { "type": "string" },
+        "contractHours": { "type": "number" },
+        "unit": { "type": "string" },
+        "sector": { "type": "string" },
+        "cnes": { "type": "string" },
+        "contact": { "type": "string" },
+        "restrictions": { "type": "string" },
+        "colorIdentifier": { "type": "string" },
+        "preferences": {
+          "type": "object",
+          "properties": {
+            "reducaoCarga": { "type": "number" },
+            "periodoPreferencial": { "type": "string" },
+            "prefersWeekends": { "type": "boolean" },
+            "tipoAtuacao": { "type": "string" }
+          }
+        }
+      },
+      "required": ["id", "name", "matricula", "role", "contractHours", "unit", "sector", "cnes", "contact"]
+    },
+    "ShiftAssignment": {
+      "title": "ShiftAssignment",
+      "description": "Assignment of a shift to an employee on a specific date",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "shiftCode": { "type": "string" },
+        "duration": { "type": "number" },
+        "isManualLock": { "type": "boolean" }
+      },
+      "required": ["id", "employeeId", "date", "shiftCode", "duration"]
+    },
+    "Setting": {
+      "title": "Setting",
+      "description": "Global application settings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "units": { "type": "array" },
+        "hours": { "type": "array" },
+        "rulesTitle": { "type": "string" },
+        "rulesDesc": { "type": "string" },
+        "glossary": { "type": "object" },
+        "shiftDefs": { "type": "object" }
+      }
+    }
+  },
+  "firestore": {
+    "/employees/{employeeId}": {
+      "schema": "Employee",
+      "description": "Collection of employees"
+    },
+    "/assignments/{assignmentId}": {
+      "schema": "ShiftAssignment",
+      "description": "Collection of shift assignments"
+    },
+    "/settings/{settingId}": {
+      "schema": "Setting",
+      "description": "Collection of settings"
+    }
+  }
+}

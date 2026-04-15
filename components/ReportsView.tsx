@@ -1,0 +1,379 @@
+import React, { useState, useMemo } from 'react';
+import { Employee, ShiftAssignment, ShiftDefinition } from '../types';
+import { FileText, Calendar, Users, Activity, X, Search, Filter } from 'lucide-react';
+
+interface ReportsViewProps {
+    employees: Employee[];
+    assignments: ShiftAssignment[];
+    startDate: Date;
+    shiftDefs: Record<string, ShiftDefinition>;
+}
+
+const ROLE_COLORS: Record<string, string> = {
+    'Enfermeiro(a)': '#0056b3',
+    'Técnico(a) em Enfermagem': '#00a8cc',
+    'Médico(a)': '#10b981',
+    'Fisioterapeuta': '#f59e0b',
+    'Nutricionista': '#8b5cf6',
+    'Psicólogo(a)': '#ec4899',
+    'Administrativo': '#6b7280',
+};
+
+const ReportsView: React.FC<ReportsViewProps> = ({ employees, assignments, startDate, shiftDefs }) => {
+    const [selectedMonth, setSelectedMonth] = useState<number>(startDate.getMonth());
+    const [selectedYear, setSelectedYear] = useState<number>(startDate.getFullYear());
+    const [activeAbsenceCard, setActiveAbsenceCard] = useState<string | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedRole, setSelectedRole] = useState('Todos');
+
+    const months = [
+        'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
+
+    const years = useMemo(() => {
+        const currentYear = new Date().getFullYear();
+        return [currentYear - 1, currentYear, currentYear + 1];
+    }, []);
+
+    const filteredEmployees = useMemo(() => {
+        return employees.filter(emp => {
+            const matchesSearch = emp.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                  emp.matricula.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesRole = selectedRole === 'Todos' || emp.role === selectedRole;
+            return matchesSearch && matchesRole;
+        });
+    }, [employees, searchTerm, selectedRole]);
+
+    // Filter assignments for the selected month
+    const monthAssignments = useMemo(() => {
+        return assignments.filter(a => {
+            if (a.shiftCode === 'BLK') return false;
+            const date = new Date(a.date + 'T00:00:00');
+            return date.getMonth() === selectedMonth && date.getFullYear() === selectedYear;
+        });
+    }, [assignments, selectedMonth, selectedYear]);
+
+    // 1. Report of everyone on duty, separated by professional categories
+    const onDutyByRole = useMemo<Record<string, { employee: Employee, totalHours: number, shifts: number }[]>>(() => {
+        const result: Record<string, { employee: Employee, totalHours: number, shifts: number }[]> = {};
+        
+        Object.keys(ROLE_COLORS).forEach(role => {
+            result[role] = [];
+        });
+
+        const employeeStats: Record<string, { totalHours: number, shifts: number }> = {};
+
+        monthAssignments.forEach(a => {
+            const def = shiftDefs[a.shiftCode];
+            if (def && def.category !== 'Afastamento') {
+                if (!employeeStats[a.employeeId]) {
+                    employeeStats[a.employeeId] = { totalHours: 0, shifts: 0 };
+                }
+                employeeStats[a.employeeId].totalHours += a.duration;
+                employeeStats[a.employeeId].shifts += 1;
+            }
+        });
+
+        filteredEmployees.forEach(emp => {
+            if (employeeStats[emp.id] && result[emp.role]) {
+                result[emp.role].push({
+                    employee: emp,
+                    totalHours: employeeStats[emp.id].totalHours,
+                    shifts: employeeStats[emp.id].shifts
+                });
+            }
+        });
+
+        // Sort by name
+        Object.keys(result).forEach(role => {
+            result[role].sort((a, b) => a.employee.name.localeCompare(b.employee.name));
+        });
+
+        return result;
+    }, [monthAssignments, filteredEmployees, shiftDefs]);
+
+    // 2. Absenteeism Cards
+    const absences = useMemo<Record<string, { count: number, details: { employee: Employee, date: string, code: string }[] }>>(() => {
+        const stats: Record<string, { count: number, details: { employee: Employee, date: string, code: string }[] }> = {
+            'FE': { count: 0, details: [] }, // Férias
+            'LM': { count: 0, details: [] }, // Licença Médica
+            'AF': { count: 0, details: [] }, // Afastamento Genérico
+            'CE': { count: 0, details: [] }, // Cedido
+            'LP': { count: 0, details: [] }, // Licença Prêmio
+            'FR': { count: 0, details: [] }, // Feriado
+            'FF': { count: 0, details: [] }, // Folga Compensatória
+            'LE': { count: 0, details: [] }, // Legenda Especial
+            'OUTROS': { count: 0, details: [] }
+        };
+
+        monthAssignments.forEach(a => {
+            const def = shiftDefs[a.shiftCode];
+            if (def && (def.category === 'Afastamento' || def.category === 'Legenda Especial')) {
+                const emp = filteredEmployees.find(e => e.id === a.employeeId);
+                if (emp) {
+                    let type = 'OUTROS';
+                    if (def.category === 'Legenda Especial') type = 'LE';
+                    else if (a.shiftCode.startsWith('FE')) type = 'FE';
+                    else if (a.shiftCode.startsWith('LM')) type = 'LM';
+                    else if (a.shiftCode.startsWith('AF')) type = 'AF';
+                    else if (a.shiftCode.startsWith('CE')) type = 'CE';
+                    else if (a.shiftCode.startsWith('LP')) type = 'LP';
+                    else if (a.shiftCode.startsWith('FR')) type = 'FR';
+                    else if (a.shiftCode.startsWith('FF')) type = 'FF';
+
+                    if (!stats[type]) stats[type] = { count: 0, details: [] };
+                    stats[type].details.push({
+                        employee: emp,
+                        date: a.date,
+                        code: a.shiftCode
+                    });
+                }
+            }
+        });
+
+        // Calculate count as unique employees
+        Object.keys(stats).forEach(type => {
+            const uniqueEmpIds = new Set(stats[type].details.map(d => d.employee.id));
+            stats[type].count = uniqueEmpIds.size;
+        });
+
+        return stats;
+    }, [monthAssignments, filteredEmployees, shiftDefs]);
+
+    const absenceLabels: Record<string, string> = {
+        'FE': 'Férias',
+        'LM': 'Licença Médica',
+        'AF': 'Afastamentos',
+        'CE': 'Cedidos',
+        'LP': 'Licença Prêmio',
+        'FR': 'Feriados',
+        'FF': 'Folgas Compensatórias',
+        'LE': 'Legendas Especiais',
+        'OUTROS': 'Outros Afastamentos'
+    };
+
+    const absenceColors: Record<string, string> = {
+        'FE': 'border-green-500 text-green-700 bg-green-50',
+        'LM': 'border-red-500 text-red-700 bg-red-50',
+        'AF': 'border-orange-500 text-orange-700 bg-orange-50',
+        'CE': 'border-purple-500 text-purple-700 bg-purple-50',
+        'LP': 'border-blue-500 text-blue-700 bg-blue-50',
+        'FR': 'border-yellow-500 text-yellow-700 bg-yellow-50',
+        'FF': 'border-teal-500 text-teal-700 bg-teal-50',
+        'LE': 'border-pink-500 text-pink-700 bg-pink-50',
+        'OUTROS': 'border-gray-500 text-gray-700 bg-gray-50'
+    };
+
+    // Group details by employee for the modal
+    const getGroupedAbsenceDetails = (type: string) => {
+        const details = absences[type]?.details || [];
+        const grouped: Record<string, { employee: Employee, dates: string[] }> = {};
+        
+        details.forEach(d => {
+            if (!grouped[d.employee.id]) {
+                grouped[d.employee.id] = { employee: d.employee, dates: [] };
+            }
+            grouped[d.employee.id].dates.push(d.date);
+        });
+
+        return Object.values(grouped).map(g => {
+            // Sort dates
+            g.dates.sort();
+            return g;
+        });
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end border-b pb-4 gap-4">
+                <div>
+                    <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                        <FileText className="text-gdf-primary" /> Relatórios
+                    </h2>
+                    <p className="text-gray-500 text-sm">Análise de plantões e absenteísmo.</p>
+                </div>
+                <div className="flex flex-wrap gap-3 w-full md:w-auto">
+                    <div className="flex-1 md:w-48 relative">
+                        <label className="block text-xs font-semibold text-gray-500 mb-1">Buscar Servidor</label>
+                        <div className="relative">
+                            <input 
+                                type="text" 
+                                placeholder="Nome ou matrícula..." 
+                                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-gdf-primary focus:border-gdf-primary text-sm p-2 pl-8 border bg-white"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                            <Search className="absolute left-2.5 top-2.5 text-gray-400" size={16} />
+                        </div>
+                    </div>
+                    <div className="flex-1 md:w-40">
+                        <label className="block text-xs font-semibold text-gray-500 mb-1">Cargo</label>
+                        <select 
+                            className="w-full border-gray-300 rounded-md shadow-sm focus:ring-gdf-primary focus:border-gdf-primary text-sm p-2 border bg-white"
+                            value={selectedRole}
+                            onChange={(e) => setSelectedRole(e.target.value)}
+                        >
+                            <option value="Todos">Todos os Cargos</option>
+                            {Object.keys(ROLE_COLORS).map(role => (
+                                <option key={role} value={role}>{role}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="flex-1 md:w-32">
+                        <label className="block text-xs font-semibold text-gray-500 mb-1">Mês</label>
+                        <select 
+                            className="w-full border-gray-300 rounded-md shadow-sm focus:ring-gdf-primary focus:border-gdf-primary text-sm p-2 border bg-white"
+                            value={selectedMonth}
+                            onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                        >
+                            {months.map((month, index) => (
+                                <option key={index} value={index}>{month}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="flex-1 md:w-24">
+                        <label className="block text-xs font-semibold text-gray-500 mb-1">Ano</label>
+                        <select 
+                            className="w-full border-gray-300 rounded-md shadow-sm focus:ring-gdf-primary focus:border-gdf-primary text-sm p-2 border bg-white"
+                            value={selectedYear}
+                            onChange={(e) => setSelectedYear(Number(e.target.value))}
+                        >
+                            {years.map(year => (
+                                <option key={year} value={year}>{year}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            {/* Absences Modal */}
+            {activeAbsenceCard && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setActiveAbsenceCard(null)}>
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+                        <div className={`p-4 border-b flex justify-between items-center ${absenceColors[activeAbsenceCard]}`}>
+                            <div>
+                                <h3 className="font-bold text-lg flex items-center gap-2">
+                                    <Activity size={20} />
+                                    Detalhamento: {absenceLabels[activeAbsenceCard]}
+                                </h3>
+                                <p className="text-sm opacity-80">Profissionais e períodos de afastamento no mês</p>
+                            </div>
+                            <button onClick={() => setActiveAbsenceCard(null)} className="hover:opacity-70">
+                                <X size={24}/>
+                            </button>
+                        </div>
+                        <div className="p-4 max-h-[60vh] overflow-y-auto">
+                            {getGroupedAbsenceDetails(activeAbsenceCard).length > 0 ? (
+                                <div className="space-y-4">
+                                    {getGroupedAbsenceDetails(activeAbsenceCard).map((item, idx) => (
+                                        <div key={idx} className="bg-white border rounded-lg p-4 shadow-sm">
+                                            <div className="flex items-center gap-3 mb-3 border-b pb-2">
+                                                <div className={`w-8 h-8 rounded-full ${item.employee.colorIdentifier} flex items-center justify-center text-white text-xs font-bold`}>
+                                                    {item.employee.name.charAt(0)}
+                                                </div>
+                                                <div>
+                                                    <span className="font-semibold text-gray-800 block">{item.employee.name}</span>
+                                                    <span className="text-xs text-gray-500">{item.employee.role}</span>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-semibold text-gray-500 mb-2">Dias Afastados ({item.dates.length}):</p>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {item.dates.map(date => {
+                                                        const d = new Date(date + 'T00:00:00');
+                                                        return (
+                                                            <span key={date} className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded border">
+                                                                {d.toLocaleDateString('pt-BR')}
+                                                            </span>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-center text-gray-500 py-8">Nenhum registro encontrado.</p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Absences Cards */}
+            <div>
+                <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                    <Activity className="text-gdf-primary" size={20} /> Absenteísmo (Servidores no Mês)
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {Object.entries(absences).map(([type, data]: [string, any]) => {
+                        if (data.count === 0 && type === 'OUTROS') return null;
+                        return (
+                            <div 
+                                key={type} 
+                                onClick={() => data.count > 0 && setActiveAbsenceCard(type)}
+                                className={`p-4 rounded-lg shadow-sm border-l-4 cursor-pointer transition-transform hover:scale-105 ${absenceColors[type] || absenceColors['OUTROS']} ${data.count === 0 ? 'opacity-50 cursor-default hover:scale-100' : ''}`}
+                            >
+                                <p className="text-xs font-bold uppercase opacity-80">{absenceLabels[type] || type}</p>
+                                <p className="text-3xl font-bold mt-1">{data.count}</p>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {/* On Duty Report */}
+            <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
+                <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
+                    <Users className="text-gdf-primary" size={20} /> Profissionais em Plantão (Exclui Afastamentos)
+                </h3>
+                
+                <div className="space-y-8">
+                    {Object.entries(onDutyByRole).map(([role, staff]: [string, any[]]) => {
+                        if (staff.length === 0) return null;
+                        return (
+                            <div key={role}>
+                                <h4 className="font-bold text-gray-700 bg-gray-50 px-4 py-2 rounded-t-lg border border-b-0">
+                                    {role} <span className="text-sm font-normal text-gray-500 ml-2">({staff.length} profissionais)</span>
+                                </h4>
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full divide-y divide-gray-200 border">
+                                        <thead className="bg-white">
+                                            <tr>
+                                                <th className="px-4 py-2 text-left text-xs font-bold text-gray-500 uppercase">Servidor</th>
+                                                <th className="px-4 py-2 text-left text-xs font-bold text-gray-500 uppercase">Matrícula</th>
+                                                <th className="px-4 py-2 text-center text-xs font-bold text-gray-500 uppercase">Plantões Realizados</th>
+                                                <th className="px-4 py-2 text-center text-xs font-bold text-gray-500 uppercase">Horas Totais</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {staff.map((s, idx) => (
+                                                <tr key={idx} className="hover:bg-blue-50">
+                                                    <td className="px-4 py-2 text-sm font-medium text-gray-900">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className={`w-6 h-6 rounded-full ${s.employee.colorIdentifier} flex items-center justify-center text-white text-[10px] font-bold`}>
+                                                                {s.employee.name.charAt(0)}
+                                                            </div>
+                                                            {s.employee.name}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-2 text-sm text-gray-500">{s.employee.matricula}</td>
+                                                    <td className="px-4 py-2 text-sm text-center font-semibold text-blue-600">{s.shifts}</td>
+                                                    <td className="px-4 py-2 text-sm text-center font-semibold text-gray-700">{s.totalHours}h</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+
+        </div>
+    );
+};
+
+export default ReportsView;

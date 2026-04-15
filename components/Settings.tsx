@@ -1,0 +1,308 @@
+import React, { useState, useEffect } from 'react';
+import { UnitStructure, ShiftAssignment, Employee, ShiftDefinition } from '../types';
+import { subscribeToSettings, saveSettings, getEmployees, getAssignments } from '../services/storageService';
+import { Plus, Trash2, Layers, Briefcase, Clock, Download, Calendar } from 'lucide-react';
+
+interface SettingsData {
+    rulesTitle: string;
+    rulesDesc: string;
+    glossary: Record<string, string>;
+    shiftDefs: Record<string, ShiftDefinition>;
+    units: UnitStructure[];
+    hours: number[];
+}
+
+const Settings: React.FC = () => {
+    const [settings, setSettings] = useState<SettingsData | null>(null);
+    const [newSectorName, setNewSectorName] = useState('');
+    const [newHour, setNewHour] = useState<string>('');
+    
+    // CSV Export State
+    const [exportStartDate, setExportStartDate] = useState('');
+    const [exportEndDate, setExportEndDate] = useState('');
+    const [isExporting, setIsExporting] = useState(false);
+
+    useEffect(() => {
+        const unsub = subscribeToSettings((data: any) => {
+            setSettings(data as SettingsData);
+        });
+        return () => unsub();
+    }, []);
+
+    if (!settings) return <div className="p-8 text-center text-gray-500">Carregando configurações...</div>;
+
+    const activeUnit = settings.units.length > 0 ? settings.units[0] : null;
+
+    // --- Sector Handlers ---
+    const handleAddSector = async () => {
+        if (!activeUnit || !newSectorName.trim()) return;
+        
+        const updatedUnits = settings.units.map((u: UnitStructure) => {
+            if (u.id === activeUnit.id) {
+                return { ...u, sectors: [...u.sectors, newSectorName] };
+            }
+            return u;
+        });
+        
+        await saveSettings({ ...settings, units: updatedUnits });
+        setNewSectorName('');
+    };
+
+    const handleDeleteSector = async (sectorName: string) => {
+        if (!activeUnit) return;
+        
+        const updatedUnits = settings.units.map((u: UnitStructure) => {
+            if (u.id === activeUnit.id) {
+                return { ...u, sectors: u.sectors.filter((s: string) => s !== sectorName) };
+            }
+            return u;
+        });
+        
+        await saveSettings({ ...settings, units: updatedUnits });
+    };
+
+    // --- Hours Handlers ---
+    const handleAddHour = async () => {
+        const hourVal = parseInt(newHour);
+        if (isNaN(hourVal) || hourVal <= 0) return;
+        if (settings.hours.includes(hourVal)) return;
+
+        const updatedHours = [...settings.hours, hourVal].sort((a, b) => a - b);
+        await saveSettings({ ...settings, hours: updatedHours });
+        setNewHour('');
+    };
+
+    const handleDeleteHour = async (hour: number) => {
+        const updatedHours = settings.hours.filter((h: number) => h !== hour);
+        await saveSettings({ ...settings, hours: updatedHours });
+    };
+
+    // --- CSV Export Handler ---
+    const handleExportCSV = async () => {
+        if (!exportStartDate || !exportEndDate) {
+            alert('Por favor, selecione o período para exportação.');
+            return;
+        }
+
+        setIsExporting(true);
+        try {
+            const employees = await getEmployees();
+            const assignments = await getAssignments();
+
+            const filteredAssignments = assignments.filter(a => {
+                return a.date >= exportStartDate && a.date <= exportEndDate;
+            });
+
+            if (filteredAssignments.length === 0) {
+                alert('Nenhuma escala encontrada para o período selecionado.');
+                return;
+            }
+
+            // Generate CSV in Grid Format
+            const dates: string[] = [];
+            const formattedDates: string[] = [];
+            let currentDate = new Date(exportStartDate + 'T12:00:00'); // Use noon to avoid TZ issues
+            const endDate = new Date(exportEndDate + 'T12:00:00');
+            
+            while (currentDate <= endDate) {
+                const isoDate = currentDate.toISOString().split('T')[0];
+                dates.push(isoDate);
+                const [y, m, d] = isoDate.split('-');
+                formattedDates.push(`${d}/${m}/${y}`);
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+
+            const headers = ['Nome', 'Matrícula', 'Cargo', 'CNES', 'Contato', 'Carga Horária', 'Setor', ...formattedDates, 'Total Horas'];
+            
+            const rows = employees.map(emp => {
+                const empAssignments = filteredAssignments.filter(a => a.employeeId === emp.id);
+                
+                let totalHours = 0;
+                const dateColumns = dates.map(dateStr => {
+                    const assignment = empAssignments.find(a => a.date === dateStr);
+                    if (assignment) {
+                        totalHours += assignment.duration;
+                        return assignment.shiftCode;
+                    }
+                    return '';
+                });
+
+                return [
+                    emp.name || '',
+                    emp.matricula || '',
+                    emp.role || '',
+                    emp.cnes || '',
+                    emp.contact || '',
+                    emp.contractHours || '',
+                    emp.sector || '',
+                    ...dateColumns,
+                    totalHours
+                ].map(val => `"${val}"`).join(',');
+            });
+
+            const csvContent = [headers.join(','), ...rows].join('\n');
+            const BOM = '\uFEFF';
+            const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.setAttribute('href', url);
+            link.setAttribute('download', `escala_saude_${exportStartDate}_${exportEndDate}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (error) {
+            console.error('Erro ao exportar CSV:', error);
+            alert('Erro ao gerar o arquivo CSV.');
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
+    return (
+        <div className="space-y-6 max-w-5xl mx-auto">
+            <div className="border-b pb-4">
+                <h2 className="text-2xl font-bold text-gray-800">Configurações do Sistema</h2>
+                <p className="text-gray-500 text-sm mt-1">Gerencie os parâmetros da base de dados Firestore.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Column 1: Sectors Management */}
+                <div className="bg-white rounded-lg shadow border border-gray-200 p-6 h-full">
+                     <h3 className="font-semibold text-gray-700 mb-6 flex items-center gap-2 text-lg border-b pb-2">
+                        <Layers size={20} className="text-gdf-secondary"/> Meus Setores
+                    </h3>
+
+                    {activeUnit && (
+                        <div>
+                             <div className="flex gap-3 mb-6">
+                                <input
+                                    type="text"
+                                    value={newSectorName}
+                                    onChange={(e) => setNewSectorName(e.target.value)}
+                                    placeholder="Ex: Sala Vermelha, UCIn..."
+                                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gdf-secondary focus:outline-none"
+                                />
+                                <button 
+                                    onClick={handleAddSector}
+                                    className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2 font-medium shadow-sm transition-colors"
+                                >
+                                    <Plus size={18} />
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-2 max-h-[300px] overflow-y-auto pr-1">
+                                {activeUnit.sectors.map((sector: string, idx: number) => (
+                                    <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors">
+                                        <div className="flex items-center gap-3">
+                                            <div className="bg-white p-1.5 rounded border border-gray-200 text-gray-500">
+                                                <Briefcase size={14}/>
+                                            </div>
+                                            <span className="text-sm font-medium text-gray-700">{sector}</span>
+                                        </div>
+                                        <button 
+                                            onClick={() => handleDeleteSector(sector)}
+                                            className="text-gray-400 hover:text-red-500 p-1 rounded-full hover:bg-red-50 transition-colors"
+                                            title="Remover Setor"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
+                                ))}
+                                {activeUnit.sectors.length === 0 && (
+                                    <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                                        <Layers size={32} className="mx-auto text-gray-300 mb-2"/>
+                                        <p className="text-sm text-gray-500">Nenhum setor cadastrado.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Column 2: Contract Hours Management */}
+                <div className="bg-white rounded-lg shadow border border-gray-200 p-6 h-full">
+                    <h3 className="font-semibold text-gray-700 mb-6 flex items-center gap-2 text-lg border-b pb-2">
+                        <Clock size={20} className="text-gdf-secondary"/> Cargas Horárias Permitidas
+                    </h3>
+
+                    <div className="flex gap-3 mb-6">
+                        <input
+                            type="number"
+                            value={newHour}
+                            onChange={(e) => setNewHour(e.target.value)}
+                            placeholder="Ex: 12, 24, 44..."
+                            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gdf-secondary focus:outline-none"
+                        />
+                        <button 
+                            onClick={handleAddHour}
+                            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2 font-medium shadow-sm transition-colors"
+                        >
+                            <Plus size={18} />
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 max-h-[300px] overflow-y-auto pr-1">
+                        {settings.hours.map((hour: number) => (
+                            <div key={hour} className="flex justify-between items-center p-3 bg-blue-50 rounded-lg border border-blue-100">
+                                <span className="text-sm font-bold text-blue-800">{hour} Horas</span>
+                                <button 
+                                    onClick={() => handleDeleteHour(hour)}
+                                    className="text-blue-300 hover:text-red-500 p-1 rounded-full hover:bg-red-50 transition-colors"
+                                    title="Remover Carga Horária"
+                                >
+                                    <Trash2 size={16} />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            {/* CSV Export Section */}
+            <div className="bg-white rounded-lg shadow border border-gray-200 p-6 mt-8">
+                <h3 className="font-semibold text-gray-700 mb-4 flex items-center gap-2 text-lg border-b pb-2">
+                    <Download size={20} className="text-gdf-primary"/> Exportar Base de Dados (CSV)
+                </h3>
+                <p className="text-sm text-gray-600 mb-6">
+                    Selecione o período desejado para baixar as escalas e dados dos servidores em formato CSV.
+                </p>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Data Inicial</label>
+                        <div className="relative">
+                            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                            <input
+                                type="date"
+                                value={exportStartDate}
+                                onChange={(e) => setExportStartDate(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gdf-primary focus:outline-none"
+                            />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Data Final</label>
+                        <div className="relative">
+                            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                            <input
+                                type="date"
+                                value={exportEndDate}
+                                onChange={(e) => setExportEndDate(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gdf-primary focus:outline-none"
+                            />
+                        </div>
+                    </div>
+                    <button 
+                        onClick={handleExportCSV}
+                        disabled={isExporting}
+                        className="bg-gdf-primary text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center justify-center gap-2 disabled:opacity-50 shadow-md"
+                    >
+                        {isExporting ? 'Processando...' : <><Download size={18} /> Baixar CSV</>}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default Settings;

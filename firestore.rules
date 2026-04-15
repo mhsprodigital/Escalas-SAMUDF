@@ -1,0 +1,58 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: employees
+    // Fields: id, name, matricula, coren, role, contractHours, unit, sector, cnes, contact, restrictions, colorIdentifier, preferences
+    //
+    // Collection: assignments
+    // Fields: id, employeeId, date, shiftCode, duration, isManualLock
+    //
+    // Collection: settings
+    // Fields: id, units, hours, rulesTitle, rulesDesc, glossary, shiftDefs
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "mhs.pro.digital@gmail.com" && request.auth.token.email_verified == true);
+    }
+
+    function isValidEmployee(data) {
+      return data.id is string && data.name is string && data.name.size() < 200 &&
+             data.matricula is string && data.role is string &&
+             data.contractHours is number && data.unit is string &&
+             data.sector is string && data.cnes is string &&
+             data.contact is string && data.contact.size() < 20;
+    }
+
+    function isValidAssignment(data) {
+      return data.id is string && data.employeeId is string &&
+             data.date is string && data.shiftCode is string &&
+             data.duration is number;
+    }
+
+    match /employees/{employeeId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /assignments/{assignmentId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+  }
+}
