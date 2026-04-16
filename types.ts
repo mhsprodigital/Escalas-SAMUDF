@@ -34,6 +34,20 @@ export interface Employee {
     preferences: EmployeePreferences;
 }
 
+export interface Vehicle {
+    id: string;
+    code: string;
+    name: string;
+    plate: string;
+    isBlocked?: boolean;
+    blockReason?: string;
+}
+
+export interface Sector {
+    id: string;
+    name: string;
+}
+
 export interface ShiftAssignment {
     id: string;
     employeeId: string;
@@ -41,6 +55,10 @@ export interface ShiftAssignment {
     shiftCode: ShiftCode;
     duration: number; // in hours, denormalized for performance
     isManualLock?: boolean; // Se foi bloqueado manualmente pelo gestor naquele mês
+    allocation?: {
+        type: 'VEHICLE' | 'SECTOR';
+        id: string;
+    };
 }
 
 export interface WeekData {

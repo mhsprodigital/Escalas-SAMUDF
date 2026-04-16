@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { UnitStructure, ShiftAssignment, Employee, ShiftDefinition } from '../types';
-import { subscribeToSettings, saveSettings, getEmployees, getAssignments } from '../services/storageService';
-import { Plus, Trash2, Layers, Briefcase, Clock, Download, Calendar } from 'lucide-react';
+import { UnitStructure, ShiftAssignment, Employee, ShiftDefinition, Vehicle, Sector } from '../types';
+import { subscribeToSettings, saveSettings, getEmployees, getAssignments, subscribeToVehicles, subscribeToSectors, saveVehicle, deleteVehicle, saveSector, deleteSector } from '../services/storageService';
+import { Plus, Trash2, Layers, Briefcase, Clock, Download, Calendar, Truck, MapPin, Lock, Unlock } from 'lucide-react';
 
 interface SettingsData {
     rulesTitle: string;
@@ -14,7 +14,17 @@ interface SettingsData {
 
 const Settings: React.FC = () => {
     const [settings, setSettings] = useState<SettingsData | null>(null);
+    const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+    const [sectors, setSectors] = useState<Sector[]>([]);
+    
+    // New Vehicle State
+    const [newVehicleCode, setNewVehicleCode] = useState('');
+    const [newVehicleName, setNewVehicleName] = useState('');
+    const [newVehiclePlate, setNewVehiclePlate] = useState('');
+    
+    // New Sector State
     const [newSectorName, setNewSectorName] = useState('');
+    
     const [newHour, setNewHour] = useState<string>('');
     
     // CSV Export State
@@ -23,42 +33,50 @@ const Settings: React.FC = () => {
     const [isExporting, setIsExporting] = useState(false);
 
     useEffect(() => {
-        const unsub = subscribeToSettings((data: any) => {
+        const unsubSettings = subscribeToSettings((data: any) => {
             setSettings(data as SettingsData);
         });
-        return () => unsub();
+        const unsubVehicles = subscribeToVehicles((data) => setVehicles(data || []));
+        const unsubSectors = subscribeToSectors((data) => setSectors(data || []));
+        
+        return () => {
+            unsubSettings();
+            unsubVehicles();
+            unsubSectors();
+        };
     }, []);
 
     if (!settings) return <div className="p-8 text-center text-gray-500">Carregando configurações...</div>;
 
-    const activeUnit = settings.units.length > 0 ? settings.units[0] : null;
+    // --- Vehicle Handlers ---
+    const handleAddVehicle = async () => {
+        if (!newVehicleCode.trim() || !newVehicleName.trim() || !newVehiclePlate.trim()) return;
+        const newVehicle: Vehicle = {
+            id: Date.now().toString(),
+            code: newVehicleCode,
+            name: newVehicleName,
+            plate: newVehiclePlate,
+            isBlocked: false
+        };
+        await saveVehicle(newVehicle);
+        setNewVehicleCode('');
+        setNewVehicleName('');
+        setNewVehiclePlate('');
+    };
+
+    const handleToggleBlockVehicle = async (vehicle: Vehicle) => {
+        await saveVehicle({ ...vehicle, isBlocked: !vehicle.isBlocked });
+    };
 
     // --- Sector Handlers ---
     const handleAddSector = async () => {
-        if (!activeUnit || !newSectorName.trim()) return;
-        
-        const updatedUnits = settings.units.map((u: UnitStructure) => {
-            if (u.id === activeUnit.id) {
-                return { ...u, sectors: [...u.sectors, newSectorName] };
-            }
-            return u;
-        });
-        
-        await saveSettings({ ...settings, units: updatedUnits });
+        if (!newSectorName.trim()) return;
+        const newSector: Sector = {
+            id: Date.now().toString(),
+            name: newSectorName
+        };
+        await saveSector(newSector);
         setNewSectorName('');
-    };
-
-    const handleDeleteSector = async (sectorName: string) => {
-        if (!activeUnit) return;
-        
-        const updatedUnits = settings.units.map((u: UnitStructure) => {
-            if (u.id === activeUnit.id) {
-                return { ...u, sectors: u.sectors.filter((s: string) => s !== sectorName) };
-            }
-            return u;
-        });
-        
-        await saveSettings({ ...settings, units: updatedUnits });
     };
 
     // --- Hours Handlers ---
@@ -166,61 +184,145 @@ const Settings: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Column 1: Sectors Management */}
+                {/* Column 1: Vehicles Management */}
                 <div className="bg-white rounded-lg shadow border border-gray-200 p-6 h-full">
                      <h3 className="font-semibold text-gray-700 mb-6 flex items-center gap-2 text-lg border-b pb-2">
-                        <Layers size={20} className="text-gdf-secondary"/> Meus Setores
+                        <Truck size={20} className="text-gdf-secondary"/> Viaturas
                     </h3>
 
-                    {activeUnit && (
-                        <div>
-                             <div className="flex gap-3 mb-6">
+                    <div>
+                        <div className="flex flex-col gap-3 mb-6">
+                            <div className="flex gap-2">
                                 <input
                                     type="text"
-                                    value={newSectorName}
-                                    onChange={(e) => setNewSectorName(e.target.value)}
-                                    placeholder="Ex: Sala Vermelha, UCIn..."
-                                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gdf-secondary focus:outline-none"
+                                    value={newVehicleCode}
+                                    onChange={(e) => setNewVehicleCode(e.target.value)}
+                                    placeholder="Código (ex: VTR-01)"
+                                    className="w-1/3 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gdf-secondary focus:outline-none"
+                                />
+                                <input
+                                    type="text"
+                                    value={newVehicleName}
+                                    onChange={(e) => setNewVehicleName(e.target.value)}
+                                    placeholder="Nome (ex: USA 01)"
+                                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gdf-secondary focus:outline-none"
+                                />
+                            </div>
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={newVehiclePlate}
+                                    onChange={(e) => setNewVehiclePlate(e.target.value)}
+                                    placeholder="Placa (ex: ABC-1234)"
+                                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gdf-secondary focus:outline-none"
                                 />
                                 <button 
-                                    onClick={handleAddSector}
+                                    onClick={handleAddVehicle}
                                     className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2 font-medium shadow-sm transition-colors"
                                 >
                                     <Plus size={18} />
                                 </button>
                             </div>
+                        </div>
 
-                            <div className="grid grid-cols-1 gap-2 max-h-[300px] overflow-y-auto pr-1">
-                                {activeUnit.sectors.map((sector: string, idx: number) => (
-                                    <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors">
-                                        <div className="flex items-center gap-3">
-                                            <div className="bg-white p-1.5 rounded border border-gray-200 text-gray-500">
-                                                <Briefcase size={14}/>
-                                            </div>
-                                            <span className="text-sm font-medium text-gray-700">{sector}</span>
+                        <div className="grid grid-cols-1 gap-2 max-h-[300px] overflow-y-auto pr-1">
+                            {vehicles.map((vehicle) => (
+                                <div key={vehicle.id} className={`flex justify-between items-center p-3 rounded-lg border transition-colors ${vehicle.isBlocked ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200 hover:border-gray-300'}`}>
+                                    <div className="flex items-center gap-3">
+                                        <div className={`p-1.5 rounded border ${vehicle.isBlocked ? 'bg-red-100 border-red-200 text-red-500' : 'bg-white border-gray-200 text-gray-500'}`}>
+                                            <Truck size={14}/>
                                         </div>
+                                        <div>
+                                            <div className="text-sm font-medium text-gray-700">
+                                                {vehicle.code} - {vehicle.name}
+                                                {vehicle.isBlocked && <span className="ml-2 text-xs text-red-600 font-bold">(Bloqueada)</span>}
+                                            </div>
+                                            <div className="text-xs text-gray-500">{vehicle.plate}</div>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-1">
                                         <button 
-                                            onClick={() => handleDeleteSector(sector)}
-                                            className="text-gray-400 hover:text-red-500 p-1 rounded-full hover:bg-red-50 transition-colors"
-                                            title="Remover Setor"
+                                            onClick={() => handleToggleBlockVehicle(vehicle)}
+                                            className={`p-1.5 rounded-full transition-colors ${vehicle.isBlocked ? 'text-green-600 hover:bg-green-100' : 'text-orange-500 hover:bg-orange-100'}`}
+                                            title={vehicle.isBlocked ? "Desbloquear Viatura" : "Bloquear Viatura"}
+                                        >
+                                            {vehicle.isBlocked ? <Unlock size={16} /> : <Lock size={16} />}
+                                        </button>
+                                        <button 
+                                            onClick={() => deleteVehicle(vehicle.id)}
+                                            className="text-gray-400 hover:text-red-500 p-1.5 rounded-full hover:bg-red-50 transition-colors"
+                                            title="Remover Viatura"
                                         >
                                             <Trash2 size={16} />
                                         </button>
                                     </div>
-                                ))}
-                                {activeUnit.sectors.length === 0 && (
-                                    <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-                                        <Layers size={32} className="mx-auto text-gray-300 mb-2"/>
-                                        <p className="text-sm text-gray-500">Nenhum setor cadastrado.</p>
-                                    </div>
-                                )}
-                            </div>
+                                </div>
+                            ))}
+                            {vehicles.length === 0 && (
+                                <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                                    <Truck size={32} className="mx-auto text-gray-300 mb-2"/>
+                                    <p className="text-sm text-gray-500">Nenhuma viatura cadastrada.</p>
+                                </div>
+                            )}
                         </div>
-                    )}
+                    </div>
                 </div>
 
-                {/* Column 2: Contract Hours Management */}
+                {/* Column 2: Sectors Management */}
                 <div className="bg-white rounded-lg shadow border border-gray-200 p-6 h-full">
+                     <h3 className="font-semibold text-gray-700 mb-6 flex items-center gap-2 text-lg border-b pb-2">
+                        <MapPin size={20} className="text-gdf-secondary"/> Setores
+                    </h3>
+
+                    <div>
+                         <div className="flex gap-3 mb-6">
+                            <input
+                                type="text"
+                                value={newSectorName}
+                                onChange={(e) => setNewSectorName(e.target.value)}
+                                placeholder="Ex: Sala Vermelha, UCIn..."
+                                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gdf-secondary focus:outline-none"
+                            />
+                            <button 
+                                onClick={handleAddSector}
+                                className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2 font-medium shadow-sm transition-colors"
+                            >
+                                <Plus size={18} />
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-2 max-h-[300px] overflow-y-auto pr-1">
+                            {sectors.map((sector) => (
+                                <div key={sector.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors">
+                                    <div className="flex items-center gap-3">
+                                        <div className="bg-white p-1.5 rounded border border-gray-200 text-gray-500">
+                                            <MapPin size={14}/>
+                                        </div>
+                                        <span className="text-sm font-medium text-gray-700">{sector.name}</span>
+                                    </div>
+                                    <button 
+                                        onClick={() => deleteSector(sector.id)}
+                                        className="text-gray-400 hover:text-red-500 p-1 rounded-full hover:bg-red-50 transition-colors"
+                                        title="Remover Setor"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            ))}
+                            {sectors.length === 0 && (
+                                <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                                    <MapPin size={32} className="mx-auto text-gray-300 mb-2"/>
+                                    <p className="text-sm text-gray-500">Nenhum setor cadastrado.</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-6">
+                {/* Column 3: Contract Hours Management */}
+                <div className="bg-white rounded-lg shadow border border-gray-200 p-6">
                     <h3 className="font-semibold text-gray-700 mb-6 flex items-center gap-2 text-lg border-b pb-2">
                         <Clock size={20} className="text-gdf-secondary"/> Cargas Horárias Permitidas
                     </h3>

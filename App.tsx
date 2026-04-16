@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Users, Settings as SettingsIcon, BookOpen, Menu, Plus, Calendar, LayoutDashboard } from 'lucide-react';
-import { subscribeToEmployees, subscribeToAssignments, subscribeToSettings, saveAssignments, saveEmployee, deleteEmployee } from './services/storageService';
-import { Employee, ShiftAssignment } from './types';
+import { subscribeToEmployees, subscribeToAssignments, subscribeToSettings, subscribeToVehicles, subscribeToSectors, saveAssignments, saveEmployee, deleteEmployee } from './services/storageService';
+import { Employee, ShiftAssignment, Vehicle, Sector } from './types';
 import StaffForm from './components/StaffForm';
 import ScaleGrid from './components/ScaleGrid';
 import Dashboard from './components/Dashboard';
@@ -29,6 +29,8 @@ const App: React.FC = () => {
     const [view, setView] = useState<ViewState>(ViewState.DASHBOARD);
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [assignments, setAssignments] = useState<ShiftAssignment[]>([]);
+    const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+    const [sectors, setSectors] = useState<Sector[]>([]);
     const [settings, setSettings] = useState<any>(null);
     const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
     const [currentWeekStart, setCurrentWeekStart] = useState<Date>(new Date());
@@ -52,6 +54,12 @@ const App: React.FC = () => {
         const unsubAssignments = subscribeToAssignments((data) => {
             setAssignments(data);
         });
+        const unsubVehicles = subscribeToVehicles((data) => {
+            setVehicles(data || []);
+        });
+        const unsubSectors = subscribeToSectors((data) => {
+            setSectors(data || []);
+        });
         const unsubSettings = subscribeToSettings((data) => {
             setSettings(data);
             setIsInitialLoading(false);
@@ -60,6 +68,8 @@ const App: React.FC = () => {
         return () => {
             unsubEmployees();
             unsubAssignments();
+            unsubVehicles();
+            unsubSectors();
             unsubSettings();
         };
     }, [user]);
@@ -277,6 +287,9 @@ const App: React.FC = () => {
                         assignments={assignments}
                         startDate={currentWeekStart}
                         shiftDefs={settings.shiftDefs}
+                        vehicles={vehicles}
+                        sectors={sectors}
+                        onAssignmentsChange={handleAssignmentsChange}
                     />
                 );
 

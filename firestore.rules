@@ -54,5 +54,15 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
+
+    match /vehicles/{vehicleId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /sectors/{sectorId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
   }
 }

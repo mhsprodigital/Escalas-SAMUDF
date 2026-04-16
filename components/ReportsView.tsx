@@ -1,12 +1,16 @@
 import React, { useState, useMemo } from 'react';
-import { Employee, ShiftAssignment, ShiftDefinition } from '../types';
+import { Employee, ShiftAssignment, ShiftDefinition, Vehicle, Sector } from '../types';
 import { FileText, Calendar, Users, Activity, X, Search, Filter } from 'lucide-react';
+import DailyReportView from './DailyReportView';
 
 interface ReportsViewProps {
     employees: Employee[];
     assignments: ShiftAssignment[];
     startDate: Date;
     shiftDefs: Record<string, ShiftDefinition>;
+    vehicles: Vehicle[];
+    sectors: Sector[];
+    onAssignmentsChange: (assignments: ShiftAssignment[]) => void;
 }
 
 const ROLE_COLORS: Record<string, string> = {
@@ -19,7 +23,8 @@ const ROLE_COLORS: Record<string, string> = {
     'Administrativo': '#6b7280',
 };
 
-const ReportsView: React.FC<ReportsViewProps> = ({ employees, assignments, startDate, shiftDefs }) => {
+const ReportsView: React.FC<ReportsViewProps> = ({ employees = [], assignments = [], startDate, shiftDefs = {}, vehicles = [], sectors = [], onAssignmentsChange }) => {
+    const [activeTab, setActiveTab] = useState<'MENSAL' | 'DIARIO'>('MENSAL');
     const [selectedMonth, setSelectedMonth] = useState<number>(startDate.getMonth());
     const [selectedYear, setSelectedYear] = useState<number>(startDate.getFullYear());
     const [activeAbsenceCard, setActiveAbsenceCard] = useState<string | null>(null);
@@ -37,6 +42,7 @@ const ReportsView: React.FC<ReportsViewProps> = ({ employees, assignments, start
     }, []);
 
     const filteredEmployees = useMemo(() => {
+        if (!employees) return [];
         return employees.filter(emp => {
             const matchesSearch = emp.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                                   emp.matricula.toLowerCase().includes(searchTerm.toLowerCase());
@@ -193,61 +199,88 @@ const ReportsView: React.FC<ReportsViewProps> = ({ employees, assignments, start
                     </h2>
                     <p className="text-gray-500 text-sm">Análise de plantões e absenteísmo.</p>
                 </div>
-                <div className="flex flex-wrap gap-3 w-full md:w-auto">
-                    <div className="flex-1 md:w-48 relative">
-                        <label className="block text-xs font-semibold text-gray-500 mb-1">Buscar Servidor</label>
-                        <div className="relative">
-                            <input 
-                                type="text" 
-                                placeholder="Nome ou matrícula..." 
-                                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-gdf-primary focus:border-gdf-primary text-sm p-2 pl-8 border bg-white"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                            />
-                            <Search className="absolute left-2.5 top-2.5 text-gray-400" size={16} />
-                        </div>
-                    </div>
-                    <div className="flex-1 md:w-40">
-                        <label className="block text-xs font-semibold text-gray-500 mb-1">Cargo</label>
-                        <select 
-                            className="w-full border-gray-300 rounded-md shadow-sm focus:ring-gdf-primary focus:border-gdf-primary text-sm p-2 border bg-white"
-                            value={selectedRole}
-                            onChange={(e) => setSelectedRole(e.target.value)}
-                        >
-                            <option value="Todos">Todos os Cargos</option>
-                            {Object.keys(ROLE_COLORS).map(role => (
-                                <option key={role} value={role}>{role}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="flex-1 md:w-32">
-                        <label className="block text-xs font-semibold text-gray-500 mb-1">Mês</label>
-                        <select 
-                            className="w-full border-gray-300 rounded-md shadow-sm focus:ring-gdf-primary focus:border-gdf-primary text-sm p-2 border bg-white"
-                            value={selectedMonth}
-                            onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                        >
-                            {months.map((month, index) => (
-                                <option key={index} value={index}>{month}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="flex-1 md:w-24">
-                        <label className="block text-xs font-semibold text-gray-500 mb-1">Ano</label>
-                        <select 
-                            className="w-full border-gray-300 rounded-md shadow-sm focus:ring-gdf-primary focus:border-gdf-primary text-sm p-2 border bg-white"
-                            value={selectedYear}
-                            onChange={(e) => setSelectedYear(Number(e.target.value))}
-                        >
-                            {years.map(year => (
-                                <option key={year} value={year}>{year}</option>
-                            ))}
-                        </select>
-                    </div>
+                
+                <div className="flex bg-gray-100 p-1 rounded-lg">
+                    <button 
+                        onClick={() => setActiveTab('MENSAL')}
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'MENSAL' ? 'bg-white text-gdf-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                        Relatório Mensal
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('DIARIO')}
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'DIARIO' ? 'bg-white text-gdf-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                        Relatório Diário
+                    </button>
                 </div>
             </div>
 
-            {/* Absences Modal */}
+            {activeTab === 'DIARIO' ? (
+                <DailyReportView 
+                    employees={employees} 
+                    assignments={assignments} 
+                    shiftDefs={shiftDefs} 
+                    vehicles={vehicles}
+                    sectors={sectors}
+                    onAssignmentsChange={onAssignmentsChange}
+                />
+            ) : (
+                <>
+                    <div className="flex flex-wrap gap-3 w-full justify-end">
+                        <div className="flex-1 md:w-48 relative">
+                            <label className="block text-xs font-semibold text-gray-500 mb-1">Buscar Servidor</label>
+                            <div className="relative">
+                                <input 
+                                    type="text" 
+                                    placeholder="Nome ou matrícula..." 
+                                    className="w-full border-gray-300 rounded-md shadow-sm focus:ring-gdf-primary focus:border-gdf-primary text-sm p-2 pl-8 border bg-white"
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                />
+                                <Search className="absolute left-2.5 top-2.5 text-gray-400" size={16} />
+                            </div>
+                        </div>
+                        <div className="flex-1 md:w-40">
+                            <label className="block text-xs font-semibold text-gray-500 mb-1">Cargo</label>
+                            <select 
+                                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-gdf-primary focus:border-gdf-primary text-sm p-2 border bg-white"
+                                value={selectedRole}
+                                onChange={(e) => setSelectedRole(e.target.value)}
+                            >
+                                <option value="Todos">Todos os Cargos</option>
+                                {Object.keys(ROLE_COLORS).map(role => (
+                                    <option key={role} value={role}>{role}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex-1 md:w-32">
+                            <label className="block text-xs font-semibold text-gray-500 mb-1">Mês</label>
+                            <select 
+                                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-gdf-primary focus:border-gdf-primary text-sm p-2 border bg-white"
+                                value={selectedMonth}
+                                onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                            >
+                                {months.map((month, index) => (
+                                    <option key={index} value={index}>{month}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex-1 md:w-24">
+                            <label className="block text-xs font-semibold text-gray-500 mb-1">Ano</label>
+                            <select 
+                                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-gdf-primary focus:border-gdf-primary text-sm p-2 border bg-white"
+                                value={selectedYear}
+                                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                            >
+                                {years.map(year => (
+                                    <option key={year} value={year}>{year}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Absences Modal */}
             {activeAbsenceCard && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setActiveAbsenceCard(null)}>
                     <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
@@ -371,6 +404,8 @@ const ReportsView: React.FC<ReportsViewProps> = ({ employees, assignments, start
                     })}
                 </div>
             </div>
+            </>
+            )}
 
         </div>
     );

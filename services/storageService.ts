@@ -11,7 +11,7 @@ import {
     writeBatch
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { Employee, ShiftAssignment, UnitStructure, ShiftDefinition } from '../types';
+import { Employee, ShiftAssignment, UnitStructure, ShiftDefinition, Vehicle, Sector } from '../types';
 import { SHIFT_DEFINITIONS as DEFAULT_SHIFT_DEFINITIONS, LEGEND_GLOSSARY as DEFAULT_LEGEND_GLOSSARY } from '../constants';
 
 // Error handling helper as per instructions
@@ -85,6 +85,22 @@ export const subscribeToSettings = (callback: (settings: any) => void) => {
     }, (error) => handleFirestoreError(error, OperationType.GET, `settings/${SETTINGS_DOC_ID}`));
 };
 
+export const subscribeToVehicles = (callback: (vehicles: Vehicle[]) => void) => {
+    const q = collection(db, 'vehicles');
+    return onSnapshot(q, (snapshot) => {
+        const vehicles = snapshot.docs.map(doc => doc.data() as Vehicle);
+        callback(vehicles);
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'vehicles'));
+};
+
+export const subscribeToSectors = (callback: (sectors: Sector[]) => void) => {
+    const q = collection(db, 'sectors');
+    return onSnapshot(q, (snapshot) => {
+        const sectors = snapshot.docs.map(doc => doc.data() as Sector);
+        callback(sectors);
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'sectors'));
+};
+
 const DEFAULT_UNITS: UnitStructure[] = [
     { id: '1', name: 'Hospital de Base (HBDF)', sectors: ['UTI Adulto', 'Pronto Socorro', 'Enfermaria A'] },
     { id: '2', name: 'Hospital Materno Infantil (HMIB)', sectors: ['Centro Obstétrico', 'Pediatria', 'Neonatologia'] },
@@ -113,6 +129,38 @@ export const deleteEmployee = async (id: string): Promise<void> => {
         await batch.commit();
     } catch (error) {
         handleFirestoreError(error, OperationType.DELETE, `employees/${id}`);
+    }
+};
+
+export const saveVehicle = async (vehicle: Vehicle): Promise<void> => {
+    try {
+        await setDoc(doc(db, 'vehicles', vehicle.id), vehicle);
+    } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `vehicles/${vehicle.id}`);
+    }
+};
+
+export const deleteVehicle = async (id: string): Promise<void> => {
+    try {
+        await deleteDoc(doc(db, 'vehicles', id));
+    } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `vehicles/${id}`);
+    }
+};
+
+export const saveSector = async (sector: Sector): Promise<void> => {
+    try {
+        await setDoc(doc(db, 'sectors', sector.id), sector);
+    } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `sectors/${sector.id}`);
+    }
+};
+
+export const deleteSector = async (id: string): Promise<void> => {
+    try {
+        await deleteDoc(doc(db, 'sectors', id));
+    } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `sectors/${id}`);
     }
 };
 
