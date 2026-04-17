@@ -130,7 +130,7 @@ const Settings: React.FC = () => {
                 currentDate.setDate(currentDate.getDate() + 1);
             }
 
-            const headers = ['Nome', 'Matrícula', 'Cargo', 'CNES', 'Contato', 'Carga Horária', 'Setor', ...formattedDates, 'Total Horas'];
+            const headers = ['Nome', 'Matrícula', 'Cargo', 'CNES', 'Contato', 'Carga Horária', ...formattedDates, 'Total Horas'];
             
             const rows = employees.map(emp => {
                 const empAssignments = filteredAssignments.filter(a => a.employeeId === emp.id);
@@ -152,7 +152,6 @@ const Settings: React.FC = () => {
                     emp.cnes || '',
                     emp.contact || '',
                     emp.contractHours || '',
-                    emp.sector || '',
                     ...dateColumns,
                     totalHours
                 ].map(val => `"${val}"`).join(',');

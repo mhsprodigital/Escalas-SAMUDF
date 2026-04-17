@@ -59,6 +59,7 @@ const RulesView: React.FC = () => {
             "Serviço",
             "Geral (Administrativo)",
             "Afastamentos & Licenças",
+            "Banco de Horas",
             "Legendas Especiais"
         ];
         groupOrder.forEach(g => groups[g] = {});
@@ -73,6 +74,7 @@ const RulesView: React.FC = () => {
             else if (def.code.startsWith('EM') || def.code.startsWith('ET') || def.code.startsWith('EN')) type = "Enfermaria";
             else if (def.code.startsWith('PM') || def.code.startsWith('PT') || def.code.startsWith('PN')) type = "Pronto Socorro";
             else if (def.code.startsWith('SM') || def.code.startsWith('ST') || def.code.startsWith('SN')) type = "Serviço";
+            else if (def.category === 'Banco de Horas') type = "Banco de Horas";
             
             if (def.code === 'BLK') type = "Afastamentos & Licenças";
 
@@ -298,10 +300,10 @@ const RulesView: React.FC = () => {
                                     <option value="Manhã">Manhã</option>
                                     <option value="Tarde">Tarde</option>
                                     <option value="Noite">Noite</option>
-                                    <option value="Madrugada">Madrugada</option>
                                     <option value="Afastamento">Afastamento</option>
                                     <option value="Bloqueio">Bloqueio</option>
                                     <option value="Legenda Especial">Legenda Especial</option>
+                                    <option value="Banco de Horas">Banco de Horas</option>
                                 </select>
                             </div>
                         </div>
@@ -358,9 +360,10 @@ const RulesView: React.FC = () => {
                                                                     <option value="Manhã">Manhã</option>
                                                                     <option value="Tarde">Tarde</option>
                                                                     <option value="Noite">Noite</option>
-                                                                    <option value="Madrugada">Madrugada</option>
                                                                     <option value="Afastamento">Afastamento</option>
                                                                     <option value="Bloqueio">Bloqueio</option>
+                                                                    <option value="Legenda Especial">Legenda Especial</option>
+                                                                    <option value="Banco de Horas">Banco de Horas</option>
                                                                 </select>
                                                             </div>
                                                             <div className="col-span-2 md:col-span-1 flex justify-end gap-1 pb-0.5">

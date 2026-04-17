@@ -6,9 +6,14 @@ import { Employee, ShiftAssignment, ShiftDefinition } from '../types';
 export const RulesService = {
     
     // Calculates total hours for a set of assignments
-    calculateAllocatedHours(employeeId: string, assignments: ShiftAssignment[]): number {
+    calculateAllocatedHours(employeeId: string, assignments: ShiftAssignment[], shiftDefs?: Record<string, ShiftDefinition>): number {
         return assignments
-            .filter(a => a.employeeId === employeeId && a.shiftCode !== 'BLK') // Ignore Block Code for hours
+            .filter(a => {
+                if (a.shiftCode === 'BLK' || a.employeeId !== employeeId) return false;
+                const def = shiftDefs ? shiftDefs[a.shiftCode] : null;
+                if (def && def.category === 'Afastamento') return false;
+                return true;
+            })
             .reduce((sum, a) => sum + a.duration, 0);
     },
 
@@ -27,7 +32,7 @@ export const RulesService = {
     },
 
     // Calcula horas de um intervalo específico (para semanas quebradas entre meses)
-    calculateRangeHours(employeeId: string, assignments: ShiftAssignment[], start: Date, end: Date): number {
+    calculateRangeHours(employeeId: string, assignments: ShiftAssignment[], start: Date, end: Date, shiftDefs?: Record<string, ShiftDefinition>): number {
         const formatDateLocal = (date: Date) => {
             const y = date.getFullYear();
             const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -41,6 +46,8 @@ export const RulesService = {
         return assignments
             .filter(a => {
                 if (a.employeeId !== employeeId || a.shiftCode === 'BLK') return false;
+                const def = shiftDefs ? shiftDefs[a.shiftCode] : null;
+                if (def && def.category === 'Afastamento') return false;
                 return a.date >= startStr && a.date <= endStr;
             })
             .reduce((sum, a) => sum + a.duration, 0);
@@ -79,15 +86,17 @@ export const RulesService = {
         };
     },
 
-    getShiftColor(category: string): string {
+    getShiftColor(category: string, code?: string): string {
         switch (category) {
             case 'Manhã': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
             case 'Tarde': return 'bg-blue-100 text-blue-800 border-blue-300';
             case 'Noite': return 'bg-indigo-100 text-indigo-800 border-indigo-300';
-            case 'Madrugada': return 'bg-purple-100 text-purple-800 border-purple-300';
             case 'Afastamento': return 'bg-gray-200 text-gray-600 border-gray-400';
             case 'Bloqueio': return 'bg-red-100 text-red-500 font-bold border-red-200';
             case 'Legenda Especial': return 'bg-pink-100 text-pink-800 border-pink-300';
+            case 'Banco de Horas': 
+                 if (code && (code.includes('-') || code.includes('NEG'))) return 'bg-orange-100 text-orange-800 border-orange-300';
+                 return 'bg-blue-100 text-blue-800 border-blue-300';
             default: return 'bg-gray-100 text-gray-800';
         }
     }

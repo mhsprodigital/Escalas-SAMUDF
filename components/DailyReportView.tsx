@@ -51,7 +51,8 @@ const DailyReportView: React.FC<DailyReportViewProps> = ({ employees = [], assig
             const emp = employees.find(e => e.id === a.employeeId);
             const def = shiftDefs[a.shiftCode];
             
-            if (emp && def && def.category !== 'Afastamento') {
+            // Filtra banco de horas e afastamentos da escala de assistência diária
+            if (emp && def && def.category !== 'Afastamento' && def.category !== 'Banco de Horas') {
                 if (!result[emp.role]) {
                     result[emp.role] = [];
                 }
@@ -59,9 +60,15 @@ const DailyReportView: React.FC<DailyReportViewProps> = ({ employees = [], assig
             }
         });
 
-        // Sort by name
+        // Sort by period, then by name
+        const periodOrder: Record<string, number> = { 'Manhã': 1, 'Tarde': 2, 'Noite': 3, 'Legenda Especial': 4 };
         Object.keys(result).forEach(role => {
-            result[role].sort((a, b) => a.employee.name.localeCompare(b.employee.name));
+            result[role].sort((a, b) => {
+                const orderA = periodOrder[a.def.category] || 99;
+                const orderB = periodOrder[b.def.category] || 99;
+                if (orderA !== orderB) return orderA - orderB;
+                return (a.employee.name || '').localeCompare(b.employee.name || '');
+            });
         });
 
         return result;

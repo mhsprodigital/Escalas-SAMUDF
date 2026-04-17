@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Employee, ShiftAssignment, ShiftDefinition } from '../types';
-import { Users, AlertTriangle, Building2, Calendar, X, Filter } from 'lucide-react';
+import { Users, AlertTriangle, Building2, Calendar, X, Filter, TrendingUp } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from 'recharts';
 
 interface DashboardProps {
@@ -29,11 +29,13 @@ const ROLE_COLORS: Record<string, string> = {
     'Nutricionista': '#8b5cf6',
     'Psicólogo(a)': '#ec4899',
     'Administrativo': '#6b7280',
+    'Afastamento': '#9ca3af',
 };
 
 const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate, shiftDefs }) => {
     const [drillDown, setDrillDown] = useState<DrillDownData | null>(null);
     const [showPendencies, setShowPendencies] = useState(false);
+    const [showStaffList, setShowStaffList] = useState(false);
     
     const [roleFilter, setRoleFilter] = useState<string>('Todos');
     const [periodFilter, setPeriodFilter] = useState<string>('Todos');
@@ -74,13 +76,32 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
 
     // Filtered Employees
     const filteredEmployees = useMemo(() => {
-        if (roleFilter === 'Todos') return employees;
-        return employees.filter(e => e.role === roleFilter);
-    }, [employees, roleFilter]);
+        let emps = roleFilter === 'Todos' ? employees : employees.filter(e => e.role === roleFilter);
+        
+        // If period is filtered, only show employees who are assigned in that period during the selected month
+        if (periodFilter !== 'Todos') {
+            const validStaffIds = new Set(
+                assignments
+                    .filter(a => a.shiftCode !== 'BLK' && monthDateStrings.has(a.date))
+                    .filter(a => shiftDefs[a.shiftCode]?.category === periodFilter)
+                    .map(a => a.employeeId)
+            );
+            emps = emps.filter(e => validStaffIds.has(e.id));
+        }
+
+        return emps.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+    }, [employees, roleFilter, periodFilter, assignments, monthDateStrings, shiftDefs]);
 
     // Filtered Assignments for "Horas Alocadas"
     const filteredAssignments = useMemo(() => {
-        let filtered = assignments.filter(a => a.shiftCode !== 'BLK' && monthDateStrings.has(a.date));
+        let filtered = assignments.filter(a => {
+            const def = shiftDefs[a.shiftCode];
+            // Excluir bloqueios, datas fora do mês e afastamentos/banco de horas da contagem de ASSISTÊNCIA
+            return a.shiftCode !== 'BLK' && 
+                   monthDateStrings.has(a.date) && 
+                   def?.category !== 'Afastamento' && 
+                   def?.category !== 'Banco de Horas';
+        });
         
         if (roleFilter !== 'Todos') {
             filtered = filtered.filter(a => {
@@ -103,16 +124,29 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
     const totalStaff = filteredEmployees.length;
     const totalHoursAssigned = filteredAssignments.reduce((acc, curr) => acc + curr.duration, 0);
     
+    // Banco de Horas stats for the selected month
+    const bankStats = useMemo(() => {
+        const monthBanks = assignments.filter(a => {
+            const def = shiftDefs[a.shiftCode];
+            return monthDateStrings.has(a.date) && def?.category === 'Banco de Horas';
+        });
+        
+        const positive = monthBanks.filter(a => a.duration > 0).reduce((sum, a) => sum + a.duration, 0);
+        const negative = monthBanks.filter(a => a.duration < 0).reduce((sum, a) => sum + a.duration, 0);
+        
+        return { positive, negative, total: positive + negative };
+    }, [assignments, monthDateStrings, shiftDefs]);
+
     // Pendencies calculated monthly
     const pendencies = useMemo(() => {
         const weeksInMonth = daysInMonth.length / 7;
         
         return filteredEmployees.map(e => {
-            const empAssignments = assignments.filter(a => 
-                a.employeeId === e.id && 
-                a.shiftCode !== 'BLK' && 
-                monthDateStrings.has(a.date)
-            );
+            const empAssignments = assignments.filter(a => {
+                if (a.employeeId !== e.id || a.shiftCode === 'BLK' || !monthDateStrings.has(a.date)) return false;
+                if (shiftDefs[a.shiftCode]?.category === 'Afastamento') return false;
+                return true;
+            });
             
             const assigned = empAssignments.reduce((sum, a) => sum + a.duration, 0);
             const expectedMonthly = Math.round(e.contractHours * weeksInMonth);
@@ -148,7 +182,9 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
             if (roleFilter !== 'Todos') {
                 dayAssignments = dayAssignments.filter(a => {
                     const emp = employees.find(e => e.id === a.employeeId);
-                    return emp?.role === roleFilter;
+                    const shiftDef = shiftDefs[a.shiftCode];
+                    const rKey = shiftDef?.category === 'Afastamento' ? 'Afastamento' : emp?.role;
+                    return rKey === roleFilter;
                 });
             }
 
@@ -168,8 +204,16 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
 
             dayAssignments.forEach(assign => {
                 const emp = employees.find(e => e.id === assign.employeeId);
-                if (emp && emp.role && uniqueEmployeesPerRole[emp.role]) {
-                    uniqueEmployeesPerRole[emp.role].add(assign.employeeId);
+                const shiftDef = shiftDefs[assign.shiftCode];
+                if (emp && shiftDef) {
+                    // Tratamento de BH Negativo como Afastamento para visualização no gráfico
+                    const isAbsence = shiftDef.category === 'Afastamento' || 
+                                    (shiftDef.category === 'Banco de Horas' && assign.duration < 0);
+                    
+                    let roleKey = isAbsence ? 'Afastamento' : emp.role;
+                    if (uniqueEmployeesPerRole[roleKey] !== undefined) {
+                        uniqueEmployeesPerRole[roleKey].add(assign.employeeId);
+                    }
                 }
             });
 
@@ -201,13 +245,20 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
         const staffList = dayAssignments
             .map(assign => {
                 const emp = employees.find(e => e.id === assign.employeeId);
-                if (emp && emp.role === roleKey) {
-                    return {
-                        name: emp.name,
-                        shiftCode: assign.shiftCode,
-                        duration: assign.duration,
-                        color: emp.colorIdentifier
-                    };
+                const shiftDef = shiftDefs[assign.shiftCode];
+                if (emp && shiftDef) {
+                    const isAbsence = shiftDef.category === 'Afastamento' || 
+                                    (shiftDef.category === 'Banco de Horas' && assign.duration < 0);
+                    
+                    let rKey = isAbsence ? 'Afastamento' : emp.role;
+                    if (rKey === roleKey) {
+                        return {
+                            name: emp.name,
+                            shiftCode: assign.shiftCode,
+                            duration: assign.duration,
+                            color: emp.colorIdentifier
+                        };
+                    }
                 }
                 return null;
             })
@@ -379,6 +430,7 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
                             <option value="Manhã">Manhã</option>
                             <option value="Tarde">Tarde</option>
                             <option value="Noite">Noite</option>
+                            <option value="Banco de Horas">Banco de Horas</option>
                         </select>
                     </div>
                 </div>
@@ -386,14 +438,20 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
             
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-blue-500 flex justify-between items-center">
+                <div 
+                    className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-blue-500 flex justify-between items-center cursor-pointer hover:bg-blue-50 transition-colors"
+                    onClick={() => setShowStaffList(true)}
+                >
                     <div>
                         <p className="text-xs font-bold text-gray-400 uppercase">Total Servidores</p>
                         <p className="text-2xl font-bold text-gray-800">{totalStaff}</p>
                     </div>
                     <Users className="text-blue-200" size={32} />
                 </div>
-                <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-yellow-500 flex justify-between items-center">
+                <div 
+                    className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-yellow-500 flex justify-between items-center cursor-pointer hover:bg-yellow-50 transition-colors"
+                    onClick={() => setShowStaffList(true)}
+                >
                     <div>
                         <p className="text-xs font-bold text-gray-400 uppercase">Horas Alocadas</p>
                         <p className="text-2xl font-bold text-gray-800">{totalHoursAssigned}h</p>
@@ -413,6 +471,37 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
                     <AlertTriangle className="text-red-200" size={32} />
                 </div>
             </div>
+
+            {/* Banco de Horas Summary Card */}
+            {bankStats.total !== 0 && (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 flex items-center justify-between shadow-sm">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-orange-100 p-2 rounded-full text-orange-600">
+                            <TrendingUp size={20} />
+                        </div>
+                        <div>
+                            <p className="text-sm font-bold text-orange-800">Resumo Banco de Horas (Mensal)</p>
+                            <p className="text-xs text-orange-600">Considerando todos os servidores filtrados</p>
+                        </div>
+                    </div>
+                    <div className="flex gap-4">
+                        <div className="text-right">
+                            <p className="text-[10px] uppercase font-bold text-gray-400">BH Positivo</p>
+                            <p className="text-lg font-bold text-blue-600">+{bankStats.positive}h</p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-[10px] uppercase font-bold text-gray-400">BH Negativo</p>
+                            <p className="text-lg font-bold text-red-600">{bankStats.negative}h</p>
+                        </div>
+                        <div className="text-right border-l pl-4 border-orange-200">
+                            <p className="text-[10px] uppercase font-bold text-gray-400">Saldo BH</p>
+                            <p className={`text-lg font-bold ${bankStats.total >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {bankStats.total > 0 ? '+' : ''}{bankStats.total}h
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Daily Distribution Chart */}
             <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
@@ -468,6 +557,60 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
                     </ResponsiveContainer>
                 </div>
             </div>
+
+            {/* Modal for Staff List */}
+            {showStaffList && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowStaffList(false)}>
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+                        <div className="bg-gray-50 p-4 border-b flex justify-between items-center">
+                            <div>
+                                <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">
+                                    <Users size={20} className="text-gdf-primary"/>
+                                    Servidores Filtrados
+                                </h3>
+                                <p className="text-sm text-gray-500">Com base nos filtros de Mês, Cargo e Período</p>
+                            </div>
+                            <button onClick={() => setShowStaffList(false)} className="text-gray-400 hover:text-red-500">
+                                <X size={24}/>
+                            </button>
+                        </div>
+                        <div className="p-4 max-h-[60vh] overflow-y-auto">
+                            {filteredEmployees.length > 0 ? (
+                                <div className="space-y-4">
+                                    {filteredEmployees.map(emp => {
+                                        const empAssignments = filteredAssignments.filter(a => a.employeeId === emp.id);
+                                        const assignedHours = empAssignments.reduce((acc, curr) => acc + curr.duration, 0);
+                                        return (
+                                        <div key={emp.id} className="flex justify-between items-center p-3 bg-white border border-gray-100 rounded-lg shadow-sm hover:bg-gray-50 transition-colors">
+                                            <div className="flex items-center gap-4">
+                                                <div className={`w-10 h-10 rounded-full ${emp.colorIdentifier} flex items-center justify-center text-white text-sm font-bold`}>
+                                                    {emp.name.charAt(0)}
+                                                </div>
+                                                <div>
+                                                    <p className="font-semibold text-gray-800">{emp.name}</p>
+                                                    <p className="text-xs text-gray-500">Mat: {emp.matricula} • {emp.role}</p>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="flex flex-col gap-1 items-end">
+                                                    <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded font-medium">
+                                                        Contrato: {emp.contractHours}h/sem
+                                                    </span>
+                                                    <span className="inline-block bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-medium">
+                                                        Alocado: {assignedHours}h
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )})}
+                                </div>
+                            ) : (
+                                <p className="text-center text-gray-500 py-8">Nenhum servidor encontrado com estes filtros.</p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

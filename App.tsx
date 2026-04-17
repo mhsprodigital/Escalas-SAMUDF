@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Users, Settings as SettingsIcon, BookOpen, Menu, Plus, Calendar, LayoutDashboard } from 'lucide-react';
-import { subscribeToEmployees, subscribeToAssignments, subscribeToSettings, subscribeToVehicles, subscribeToSectors, saveAssignments, saveEmployee, deleteEmployee } from './services/storageService';
+import { subscribeToEmployees, subscribeToAssignments, subscribeToSettings, subscribeToVehicles, subscribeToSectors, saveAssignments, saveEmployee, deleteEmployee, deleteAssignment, syncDefaultSettings } from './services/storageService';
 import { Employee, ShiftAssignment, Vehicle, Sector } from './types';
 import StaffForm from './components/StaffForm';
 import ScaleGrid from './components/ScaleGrid';
@@ -47,6 +47,9 @@ const App: React.FC = () => {
 
     useEffect(() => {
         if (!user) return;
+
+        // Sync settings with new defaults (like Banco de Horas)
+        syncDefaultSettings();
 
         const unsubEmployees = subscribeToEmployees((data) => {
             setEmployees(data);
@@ -119,6 +122,10 @@ const App: React.FC = () => {
 
     const handleAssignmentsChange = async (newAssignments: ShiftAssignment[]) => {
         await saveAssignments(newAssignments);
+    };
+
+    const handleAssignmentDelete = async (assignmentId: string) => {
+        await deleteAssignment(assignmentId);
     };
 
     if (isAuthChecking) {
@@ -199,7 +206,7 @@ const App: React.FC = () => {
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-gray-200">
-                                    {employees.map(emp => (
+                                    {[...employees].sort((a,b) => (a.name || '').localeCompare(b.name || '')).map(emp => (
                                         <tr key={emp.id} className="hover:bg-blue-50 transition-colors">
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <div className="flex items-center">
@@ -269,6 +276,7 @@ const App: React.FC = () => {
                         employees={employees}
                         assignments={assignments}
                         onAssignmentChange={handleAssignmentsChange}
+                        onAssignmentDelete={handleAssignmentDelete}
                         startDate={currentWeekStart}
                         shiftDefs={settings.shiftDefs}
                     />

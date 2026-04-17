@@ -17,7 +17,9 @@ export const LEGEND_GLOSSARY: Record<string, string> = {
     'FF': 'Folga Compensatória de Feriado',
     'CE': 'Cedido (Servidor cedido a outro órgão)',
     'LP': 'Licença Prêmio',
-    'PL': 'Plantão Extra'
+    'PL': 'Plantão Extra',
+    'BH+': 'Banco de Horas Positivo',
+    'BH-': 'Banco de Horas Negativo'
 };
 
 // Mapeamento COMPLETO conforme Anexo I - Portaria
@@ -191,6 +193,25 @@ export const SHIFT_DEFINITIONS: Record<string, ShiftDefinition> = {
 
     // Licença Prêmio (LP)
     'LP6':    { code: 'LP6', label: 'LP6 (Prêmio)', start: '07:00', end: '13:00', hours: 6, category: 'Afastamento' },
+
+    // ==========================================
+    // 8. BANCO DE HORAS
+    // ==========================================
+    'BH+1':   { code: 'BH+1', label: 'BH+ 1h', start: '', end: '', hours: 1, category: 'Banco de Horas' },
+    'BH+2':   { code: 'BH+2', label: 'BH+ 2h', start: '', end: '', hours: 2, category: 'Banco de Horas' },
+    'BH+3':   { code: 'BH+3', label: 'BH+ 3h', start: '', end: '', hours: 3, category: 'Banco de Horas' },
+    'BH+4':   { code: 'BH+4', label: 'BH+ 4h', start: '', end: '', hours: 4, category: 'Banco de Horas' },
+    'BH+5':   { code: 'BH+5', label: 'BH+ 5h', start: '', end: '', hours: 5, category: 'Banco de Horas' },
+    'BH+6':   { code: 'BH+6', label: 'BH+ 6h', start: '', end: '', hours: 6, category: 'Banco de Horas' },
+    'BH+12':  { code: 'BH+12', label: 'BH+ 12h', start: '', end: '', hours: 12, category: 'Banco de Horas' },
+    
+    'BH-1':   { code: 'BH-1', label: 'BH- 1h', start: '', end: '', hours: -1, category: 'Banco de Horas' },
+    'BH-2':   { code: 'BH-2', label: 'BH- 2h', start: '', end: '', hours: -2, category: 'Banco de Horas' },
+    'BH-3':   { code: 'BH-3', label: 'BH- 3h', start: '', end: '', hours: -3, category: 'Banco de Horas' },
+    'BH-4':   { code: 'BH-4', label: 'BH- 4h', start: '', end: '', hours: -4, category: 'Banco de Horas' },
+    'BH-5':   { code: 'BH-5', label: 'BH- 5h', start: '', end: '', hours: -5, category: 'Banco de Horas' },
+    'BH-6':   { code: 'BH-6', label: 'BH- 6h', start: '', end: '', hours: -6, category: 'Banco de Horas' },
+    'BH-12':  { code: 'BH-12', label: 'BH- 12h', start: '', end: '', hours: -12, category: 'Banco de Horas' },
 };
 
 export const AVATAR_COLORS = [

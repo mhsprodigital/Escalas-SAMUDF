@@ -14,6 +14,47 @@ import { db, auth } from '../firebase';
 import { Employee, ShiftAssignment, UnitStructure, ShiftDefinition, Vehicle, Sector } from '../types';
 import { SHIFT_DEFINITIONS as DEFAULT_SHIFT_DEFINITIONS, LEGEND_GLOSSARY as DEFAULT_LEGEND_GLOSSARY } from '../constants';
 
+export const syncDefaultSettings = async (): Promise<void> => {
+    try {
+        const docRef = doc(db, 'settings', SETTINGS_DOC_ID);
+        const snapshot = await getDoc(docRef);
+        
+        if (snapshot.exists()) {
+            const currentSettings = snapshot.data();
+            let needsUpdate = false;
+            
+            // Check for missing glossary items
+            const newGlossary = { ...currentSettings.glossary };
+            Object.entries(DEFAULT_LEGEND_GLOSSARY).forEach(([key, value]) => {
+                if (!newGlossary[key]) {
+                    newGlossary[key] = value;
+                    needsUpdate = true;
+                }
+            });
+            
+            // Check for missing shift definitions
+            const newShiftDefs = { ...currentSettings.shiftDefs };
+            Object.entries(DEFAULT_SHIFT_DEFINITIONS).forEach(([key, value]) => {
+                if (!newShiftDefs[key]) {
+                    newShiftDefs[key] = value;
+                    needsUpdate = true;
+                }
+            });
+
+            if (needsUpdate) {
+                await setDoc(docRef, {
+                    ...currentSettings,
+                    glossary: newGlossary,
+                    shiftDefs: newShiftDefs
+                });
+                console.log('Settings synchronized with new defaults.');
+            }
+        }
+    } catch (error) {
+        console.error('Error syncing settings:', error);
+    }
+};
+
 // Error handling helper as per instructions
 enum OperationType {
   CREATE = 'create',
@@ -161,6 +202,14 @@ export const deleteSector = async (id: string): Promise<void> => {
         await deleteDoc(doc(db, 'sectors', id));
     } catch (error) {
         handleFirestoreError(error, OperationType.DELETE, `sectors/${id}`);
+    }
+};
+
+export const deleteAssignment = async (id: string): Promise<void> => {
+    try {
+        await deleteDoc(doc(db, 'assignments', id));
+    } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `assignments/${id}`);
     }
 };
 

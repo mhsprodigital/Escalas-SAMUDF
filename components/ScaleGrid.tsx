@@ -7,6 +7,7 @@ interface ScaleGridProps {
     employees: Employee[];
     assignments: ShiftAssignment[];
     onAssignmentChange: (newAssignments: ShiftAssignment[]) => void;
+    onAssignmentDelete: (id: string) => Promise<void>;
     startDate: Date; 
     shiftDefs: Record<string, ShiftDefinition>;
 }
@@ -28,7 +29,7 @@ interface WeekSegment {
 const NOTES_KEY = 'sis_escala_weekly_notes';
 const USAGE_KEY = 'sis_escala_shift_usage';
 
-const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignmentChange, startDate, shiftDefs }) => {
+const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignmentChange, onAssignmentDelete, startDate, shiftDefs }) => {
     const [currentDate, setCurrentDate] = useState(startDate);
     const [searchTerm, setSearchTerm] = useState('');
     const [activeCell, setActiveCell] = useState<ActiveCell | null>(null);
@@ -165,7 +166,7 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
         const matchName = emp.name.toLowerCase().includes(searchTerm.toLowerCase());
         const matchRole = emp.role.toLowerCase().includes(searchTerm.toLowerCase());
         return matchName || matchRole;
-    });
+    }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
     // --- Helpers ---
     const getCellAssignments = (empId: string, dateStr: string) => {
@@ -207,12 +208,15 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
         if (code === 'BLK') setActiveCell(null);
     };
 
-    const handleRemoveAssignment = (assignmentId: string) => {
-        onAssignmentChange(assignments.filter(a => a.id !== assignmentId));
+    const handleRemoveAssignment = async (assignmentId: string) => {
+        await onAssignmentDelete(assignmentId);
     };
 
-    const handleClearDay = (empId: string, dateStr: string) => {
-        onAssignmentChange(assignments.filter(a => !(a.employeeId === empId && a.date === dateStr)));
+    const handleClearDay = async (empId: string, dateStr: string) => {
+        const toDelete = assignments.filter(a => a.employeeId === empId && a.date === dateStr);
+        if (toDelete.length > 0) {
+            await Promise.all(toDelete.map(a => onAssignmentDelete(a.id)));
+        }
     };
 
     // --- Smart Lists Logic ---
@@ -230,6 +234,10 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
 
     const specialShifts = useMemo(() => {
         return Object.values(shiftDefs).filter((s: ShiftDefinition) => s && s.category === 'Legenda Especial');
+    }, [shiftDefs]);
+
+    const bankShifts = useMemo(() => {
+        return Object.values(shiftDefs).filter((s: ShiftDefinition) => s && s.category === 'Banco de Horas');
     }, [shiftDefs]);
 
     const filteredShifts = useMemo(() => {
@@ -295,7 +303,7 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
                     className="w-full text-left px-4 py-2 hover:bg-blue-50 rounded-lg flex justify-between items-center group border-b border-gray-50 last:border-0"
                 >
                     <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded flex items-center justify-center text-xs font-bold shadow-sm ${RulesService.getShiftColor(def.category)}`}>
+                        <div className={`w-10 h-10 rounded flex items-center justify-center text-xs font-bold shadow-sm ${RulesService.getShiftColor(def.category, def.code)}`}>
                             {def.code}
                         </div>
                         <div>
@@ -419,6 +427,15 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
                                                 <Sparkles size={12} className="text-pink-500"/> Legendas Especiais
                                             </h4>
                                             {renderShiftButtonList(specialShifts)}
+                                        </div>
+                                    )}
+
+                                    {bankShifts.length > 0 && (
+                                        <div>
+                                            <h4 className="px-4 text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1">
+                                                <TrendingUp size={12} className="text-orange-500"/> Banco de Horas (BH+ / BH-)
+                                            </h4>
+                                            {renderShiftButtonList(bankShifts)}
                                         </div>
                                     )}
                                 </div>
@@ -638,7 +655,7 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
                                                         ) : (
                                                             cellAssignments.map((assignment, idx) => {
                                                                 const def = shiftDefs[assignment.shiftCode];
-                                                                const chipColor = def ? RulesService.getShiftColor(def.category) : 'bg-gray-200';
+                                                                const chipColor = def ? RulesService.getShiftColor(def.category, def.code) : 'bg-gray-200';
                                                                 
                                                                 // FIXED HEIGHT CHIP for consistent visual weight
                                                                 return (
@@ -675,7 +692,7 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
                                         </td>
 
                                         {weekSegments.map((segment, idx) => {
-                                            const hours = RulesService.calculateRangeHours(emp.id, assignments, segment.fullWeekStart, segment.fullWeekEnd);
+                                            const hours = RulesService.calculateRangeHours(emp.id, assignments, segment.fullWeekStart, segment.fullWeekEnd, shiftDefs);
                                             const y = segment.fullWeekStart.getFullYear();
                                             const m = String(segment.fullWeekStart.getMonth() + 1).padStart(2, '0');
                                             const d = String(segment.fullWeekStart.getDate()).padStart(2, '0');
@@ -726,11 +743,13 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
                 )}
             </div>
             
-            <div className="flex gap-4 text-xs text-gray-500 justify-center">
+            <div className="flex flex-wrap gap-4 text-xs text-gray-500 justify-center">
                 <div className="flex items-center gap-1"><div className="w-3 h-3 bg-yellow-100 border border-yellow-300 rounded-sm"></div> Manhã</div>
                 <div className="flex items-center gap-1"><div className="w-3 h-3 bg-blue-100 border border-blue-300 rounded-sm"></div> Tarde</div>
                 <div className="flex items-center gap-1"><div className="w-3 h-3 bg-indigo-100 border border-indigo-300 rounded-sm"></div> Noite</div>
                 <div className="flex items-center gap-1"><div className="w-3 h-3 bg-red-100 border border-red-200 rounded-sm"></div> Bloqueio</div>
+                <div className="flex items-center gap-1"><div className="w-3 h-3 bg-orange-100 border border-orange-300 rounded-sm"></div> Banco (Negativo)</div>
+                <div className="flex items-center gap-1"><div className="w-3 h-3 bg-blue-100 border border-blue-300 rounded-sm"></div> Banco (Positivo)</div>
                 <div className="flex items-center gap-1 font-bold"><span className="border-r-2 border-gray-400 h-3 w-1 inline-block"></span> Semanas (Dom-Sáb)</div>
             </div>
         </div>

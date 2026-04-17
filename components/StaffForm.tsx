@@ -34,6 +34,7 @@ const StaffForm: React.FC<StaffFormProps> = ({ onSave, onCancel, initialData }) 
         contractHours: 40,
         unit: 'Instituição Padrão',
         sector: 'Pronto Socorro Geral',
+        employmentType: 'Efetivo',
         preferences: defaultPreferences
     });
 
@@ -87,7 +88,9 @@ const StaffForm: React.FC<StaffFormProps> = ({ onSave, onCancel, initialData }) 
             preferences: {
                 ...prefs,
                 reducaoCarga: Number(prefs.reducaoCarga)
-            }
+            },
+            employmentType: formData.employmentType as 'Efetivo' | 'Temporário',
+            contractExpiry: formData.employmentType === 'Temporário' ? formData.contractExpiry : undefined
         };
         onSave(newEmployee);
     };
@@ -220,6 +223,33 @@ const StaffForm: React.FC<StaffFormProps> = ({ onSave, onCancel, initialData }) 
                                 ))}
                             </select>
                         </div>
+
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">Vínculo Empregatício</label>
+                            <select
+                                name="employmentType"
+                                value={formData.employmentType}
+                                onChange={handleChange}
+                                className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-gdf-primary focus:border-transparent transition-all shadow-sm cursor-pointer"
+                            >
+                                <option value="Efetivo">Efetivo</option>
+                                <option value="Temporário">Temporário (Contrato)</option>
+                            </select>
+                        </div>
+
+                        {formData.employmentType === 'Temporário' && (
+                            <div className="animate-in fade-in slide-in-from-top-1">
+                                <label className="block text-sm font-semibold text-gray-700 mb-2 text-gdf-warning">Validade do Contrato</label>
+                                <input
+                                    required
+                                    type="date"
+                                    name="contractExpiry"
+                                    value={formData.contractExpiry || ''}
+                                    onChange={handleChange}
+                                    className="w-full px-4 py-2.5 bg-white border-2 border-orange-100 rounded-lg text-gray-900 focus:ring-2 focus:ring-gdf-primary focus:border-transparent transition-all shadow-sm"
+                                />
+                            </div>
+                        )}
                     </div>
                 </section>
 

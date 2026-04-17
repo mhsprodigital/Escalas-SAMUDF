@@ -6,7 +6,7 @@ export interface ShiftDefinition {
     start: string;
     end: string;
     hours: number;
-    category: 'Manhã' | 'Tarde' | 'Noite' | 'Madrugada' | 'Afastamento' | 'Bloqueio' | 'Legenda Especial';
+    category: 'Manhã' | 'Tarde' | 'Noite' | 'Afastamento' | 'Bloqueio' | 'Legenda Especial' | 'Banco de Horas';
 }
 
 export interface EmployeePreferences {
@@ -32,6 +32,10 @@ export interface Employee {
     colorIdentifier: string;
     
     preferences: EmployeePreferences;
+    
+    // Novas propriedades para gestão de contratos
+    employmentType?: 'Efetivo' | 'Temporário';
+    contractExpiry?: string; // Data no formato YYYY-MM-DD
 }
 
 export interface Vehicle {
