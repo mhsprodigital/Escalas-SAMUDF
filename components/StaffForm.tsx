@@ -205,6 +205,7 @@ const StaffForm: React.FC<StaffFormProps> = ({ onSave, onCancel, initialData }) 
                                 <option value="Nutricionista">Nutricionista</option>
                                 <option value="Psicólogo(a)">Psicólogo(a)</option>
                                 <option value="Administrativo">Administrativo</option>
+                                <option value="Administrador">Administrador</option>
                             </select>
                         </div>
 

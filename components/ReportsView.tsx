@@ -24,6 +24,7 @@ const ROLE_COLORS: Record<string, string> = {
     'Nutricionista': '#8b5cf6',
     'Psicólogo(a)': '#ec4899',
     'Administrativo': '#6b7280',
+    'Administrador': '#1e293b',
 };
 
 const ReportsView: React.FC<ReportsViewProps> = ({ employees = [], assignments = [], startDate, shiftDefs = {}, vehicles = [], sectors = [], onAssignmentsChange }) => {

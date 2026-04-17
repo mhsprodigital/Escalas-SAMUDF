@@ -23,7 +23,7 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && 
-        (request.auth.token.email == "mhs.pro.digital@gmail.com" && request.auth.token.email_verified == true);
+        ((request.auth.token.email == "mhs.pro.digital@gmail.com" || request.auth.token.email == "allexmedeiros@hotmail.com") && request.auth.token.email_verified == true);
     }
 
     function isValidEmployee(data) {
