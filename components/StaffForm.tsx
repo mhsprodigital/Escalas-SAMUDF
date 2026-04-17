@@ -90,7 +90,7 @@ const StaffForm: React.FC<StaffFormProps> = ({ onSave, onCancel, initialData }) 
                 reducaoCarga: Number(prefs.reducaoCarga)
             },
             employmentType: formData.employmentType as 'Efetivo' | 'Temporário',
-            contractExpiry: formData.employmentType === 'Temporário' ? formData.contractExpiry : undefined
+            contractExpiry: formData.employmentType === 'Temporário' ? (formData.contractExpiry || null) : null
         };
         onSave(newEmployee);
     };

@@ -35,7 +35,7 @@ export interface Employee {
     
     // Novas propriedades para gestão de contratos
     employmentType?: 'Efetivo' | 'Temporário';
-    contractExpiry?: string; // Data no formato YYYY-MM-DD
+    contractExpiry?: string | null; // Data no formato YYYY-MM-DD
 }
 
 export interface Vehicle {
