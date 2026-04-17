@@ -14,6 +14,7 @@ interface ReportsViewProps {
     vehicles: Vehicle[];
     sectors: Sector[];
     onAssignmentsChange: (assignments: ShiftAssignment[]) => void;
+    canEdit: boolean;
 }
 
 const ROLE_COLORS: Record<string, string> = {
@@ -27,7 +28,7 @@ const ROLE_COLORS: Record<string, string> = {
     'Administrador': '#1e293b',
 };
 
-const ReportsView: React.FC<ReportsViewProps> = ({ employees = [], assignments = [], startDate, shiftDefs = {}, vehicles = [], sectors = [], onAssignmentsChange }) => {
+const ReportsView: React.FC<ReportsViewProps> = ({ employees = [], assignments = [], startDate, shiftDefs = {}, vehicles = [], sectors = [], onAssignmentsChange, canEdit }) => {
     const [activeTab, setActiveTab] = useState<'MENSAL' | 'DIARIO' | 'ALOCACAO' | 'CONTRATOS'>('MENSAL');
     const [selectedMonth, setSelectedMonth] = useState<number>(startDate.getMonth());
     const [selectedYear, setSelectedYear] = useState<number>(startDate.getFullYear());
@@ -247,6 +248,7 @@ const ReportsView: React.FC<ReportsViewProps> = ({ employees = [], assignments =
                     vehicles={vehicles}
                     sectors={sectors}
                     onAssignmentsChange={onAssignmentsChange}
+                    canEdit={canEdit}
                 />
             ) : activeTab === 'ALOCACAO' ? (
                 <AllocationReportView

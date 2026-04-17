@@ -10,6 +10,7 @@ interface ScaleGridProps {
     onAssignmentDelete: (id: string) => Promise<void>;
     startDate: Date; 
     shiftDefs: Record<string, ShiftDefinition>;
+    canEdit?: boolean;
 }
 
 interface ActiveCell {
@@ -29,7 +30,7 @@ interface WeekSegment {
 const NOTES_KEY = 'sis_escala_weekly_notes';
 const USAGE_KEY = 'sis_escala_shift_usage';
 
-const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignmentChange, onAssignmentDelete, startDate, shiftDefs }) => {
+const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignmentChange, onAssignmentDelete, startDate, shiftDefs, canEdit = false }) => {
     const [currentDate, setCurrentDate] = useState(startDate);
     const [searchTerm, setSearchTerm] = useState('');
     const [activeCell, setActiveCell] = useState<ActiveCell | null>(null);
@@ -175,6 +176,7 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
 
     // --- Actions ---
     const handleCellClick = (empId: string, dateStr: string, empName: string) => {
+        if (!canEdit) return;
         setActiveCell({ empId, dateStr, empName });
         setShiftSearch('');
     };
@@ -542,12 +544,14 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
                         </div>
                         <button onClick={nextMonth} className="p-2 hover:bg-white rounded-md shadow-sm transition"><ChevronRight size={20}/></button>
                     </div>
-                    <button 
-                        onClick={() => setShowBatchModal(true)}
-                        className="bg-gdf-primary text-white px-4 py-2 rounded-lg shadow-sm hover:bg-blue-700 transition text-sm font-semibold whitespace-nowrap"
-                    >
-                        Lançar Eventos
-                    </button>
+                    {canEdit && (
+                        <button 
+                            onClick={() => setShowBatchModal(true)}
+                            className="bg-gdf-primary text-white px-4 py-2 rounded-lg shadow-sm hover:bg-blue-700 transition text-sm font-semibold whitespace-nowrap"
+                        >
+                            Lançar Eventos
+                        </button>
+                    )}
                 </div>
 
                 <div className="flex flex-wrap gap-3 w-full lg:w-auto">
@@ -671,7 +675,7 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
                                                         )}
                                                     </div>
 
-                                                    {cellAssignments.length > 0 && (
+                                                    {cellAssignments.length > 0 && canEdit && (
                                                         <button 
                                                             onClick={(e) => { e.stopPropagation(); handleClearDay(emp.id, dateStr); }}
                                                             className="absolute top-0 right-0 hidden group-hover:flex bg-white rounded-full p-0.5 shadow-sm border border-gray-300 z-10 hover:text-red-600"
@@ -719,10 +723,11 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
                                                                 type="text"
                                                                 value={weeklyNotes[noteKey] || ''}
                                                                 onChange={(e) => saveNote(noteKey, e.target.value)}
-                                                                placeholder="Obs..."
-                                                                className="w-full bg-transparent text-[10px] text-gray-600 placeholder-gray-300 border-b border-transparent focus:border-blue-400 focus:outline-none transition-colors px-1"
+                                                                readOnly={!canEdit}
+                                                                placeholder={canEdit ? "Obs..." : ""}
+                                                                className={`w-full bg-transparent text-[10px] text-gray-600 placeholder-gray-300 border-b border-transparent focus:border-blue-400 focus:outline-none transition-colors px-1 ${!canEdit ? 'cursor-default' : ''}`}
                                                             />
-                                                            {!weeklyNotes[noteKey] && (
+                                                            {!weeklyNotes[noteKey] && canEdit && (
                                                                 <MessageSquare size={10} className="absolute right-0 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none opacity-0 group-hover/input:opacity-100" />
                                                             )}
                                                         </div>

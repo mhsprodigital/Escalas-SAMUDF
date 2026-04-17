@@ -1,14 +1,15 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Users, Settings as SettingsIcon, BookOpen, Menu, Plus, Calendar, LayoutDashboard } from 'lucide-react';
-import { subscribeToEmployees, subscribeToAssignments, subscribeToSettings, subscribeToVehicles, subscribeToSectors, saveAssignments, saveEmployee, deleteEmployee, deleteAssignment, syncDefaultSettings } from './services/storageService';
-import { Employee, ShiftAssignment, Vehicle, Sector } from './types';
+import { subscribeToEmployees, subscribeToAssignments, subscribeToSettings, subscribeToVehicles, subscribeToSectors, saveAssignments, saveEmployee, deleteEmployee, deleteAssignment, syncDefaultSettings, getSystemUserByEmail } from './services/storageService';
+import { Employee, ShiftAssignment, Vehicle, Sector, UserRole } from './types';
 import StaffForm from './components/StaffForm';
 import ScaleGrid from './components/ScaleGrid';
 import Dashboard from './components/Dashboard';
 import Settings from './components/Settings';
 import RulesView from './components/RulesView';
 import ReportsView from './components/ReportsView';
-import { FileText } from 'lucide-react';
+import AccessManagement from './components/AccessManagement';
+import { FileText, ShieldCheck } from 'lucide-react';
 import ConfirmModal from './components/ConfirmModal';
 import { auth } from './firebase';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User } from 'firebase/auth';
@@ -20,11 +21,13 @@ enum ViewState {
     SCALE = 'SCALE',
     RULES = 'RULES',
     REPORTS = 'REPORTS',
-    SETTINGS = 'SETTINGS'
+    SETTINGS = 'SETTINGS',
+    ACCESS_MANAGEMENT = 'ACCESS_MANAGEMENT'
 }
 
 const App: React.FC = () => {
     const [user, setUser] = useState<User | null>(null);
+    const [userRole, setUserRole] = useState<UserRole>('VIEWER');
     const [isAuthChecking, setIsAuthChecking] = useState(true);
     const [view, setView] = useState<ViewState>(ViewState.DASHBOARD);
     const [employees, setEmployees] = useState<Employee[]>([]);
@@ -40,10 +43,37 @@ const App: React.FC = () => {
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
             setUser(currentUser);
-            setIsAuthChecking(false);
+            if (!currentUser) setIsAuthChecking(false);
         });
         return () => unsubscribe();
     }, []);
+
+    useEffect(() => {
+        if (!user) return;
+
+        const checkRole = async () => {
+            // Master always ADMIN
+            if (user.email?.toLowerCase() === 'mhs.pro.digital@gmail.com') {
+                setUserRole('ADMIN');
+                setIsAuthChecking(false);
+                return;
+            }
+
+            // Check system_users
+            const systemUser = await getSystemUserByEmail(user.email || '');
+            if (systemUser) {
+                setUserRole(systemUser.role);
+            } else {
+                setUserRole('VIEWER');
+            }
+            setIsAuthChecking(false);
+        };
+
+        checkRole();
+    }, [user]);
+
+    const isAdmin = userRole === 'ADMIN';
+    const canEdit = userRole === 'ADMIN' || userRole === 'EDITOR';
 
     useEffect(() => {
         if (!user) return;
@@ -185,14 +215,16 @@ const App: React.FC = () => {
                         <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
                             <div>
                                 <h2 className="text-lg font-bold text-gray-800">Cadastro de Servidores</h2>
-                                <p className="text-xs text-gray-500">Gerencie a equipe do seu setor (Pronto Socorro Geral)</p>
+                                <p className="text-xs text-gray-500">Gerencie a equipe do seu setor</p>
                             </div>
-                            <button 
-                                onClick={() => { setEditingEmployee(null); setView(ViewState.STAFF_FORM); }}
-                                className="bg-gdf-secondary text-white px-4 py-2 rounded flex items-center gap-2 hover:bg-cyan-600 transition shadow-sm"
-                            >
-                                <Plus size={18} /> Novo Servidor
-                            </button>
+                            {canEdit && (
+                                <button 
+                                    onClick={() => { setEditingEmployee(null); setView(ViewState.STAFF_FORM); }}
+                                    className="bg-gdf-secondary text-white px-4 py-2 rounded flex items-center gap-2 hover:bg-cyan-600 transition shadow-sm"
+                                >
+                                    <Plus size={18} /> Novo Servidor
+                                </button>
+                            )}
                         </div>
                         <div className="overflow-x-auto">
                             <table className="min-w-full divide-y divide-gray-200">
@@ -202,7 +234,7 @@ const App: React.FC = () => {
                                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Cargo</th>
                                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Restrições</th>
                                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Carga Horária</th>
-                                        <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Ações</th>
+                                        <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">{canEdit ? 'Ações' : ''}</th>
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-gray-200">
@@ -241,8 +273,12 @@ const App: React.FC = () => {
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                <button onClick={() => { setEditingEmployee(emp); setView(ViewState.STAFF_FORM); }} className="text-indigo-600 hover:text-indigo-900 mr-4 font-semibold">Editar</button>
-                                                <button onClick={() => handleDeleteEmployee(emp.id)} className="text-red-500 hover:text-red-700 font-semibold">Excluir</button>
+                                                {canEdit && (
+                                                    <>
+                                                        <button onClick={() => { setEditingEmployee(emp); setView(ViewState.STAFF_FORM); }} className="text-indigo-600 hover:text-indigo-900 mr-4 font-semibold">Editar</button>
+                                                        <button onClick={() => handleDeleteEmployee(emp.id)} className="text-red-500 hover:text-red-700 font-semibold">Excluir</button>
+                                                    </>
+                                                )}
                                             </td>
                                         </tr>
                                     ))}
@@ -279,11 +315,15 @@ const App: React.FC = () => {
                         onAssignmentDelete={handleAssignmentDelete}
                         startDate={currentWeekStart}
                         shiftDefs={settings.shiftDefs}
+                        canEdit={canEdit}
                     />
                 );
             
             case ViewState.SETTINGS:
-                return <Settings />;
+                return <Settings canEdit={isAdmin} />;
+
+            case ViewState.ACCESS_MANAGEMENT:
+                return <AccessManagement />;
 
             case ViewState.RULES:
                 return <RulesView />;
@@ -298,6 +338,7 @@ const App: React.FC = () => {
                         vehicles={vehicles}
                         sectors={sectors}
                         onAssignmentsChange={handleAssignmentsChange}
+                        canEdit={canEdit}
                     />
                 );
 
@@ -359,6 +400,15 @@ const App: React.FC = () => {
                     </button>
 
                     <div className="pt-4 mt-4 border-t border-gray-700">
+                        {isAdmin && (
+                            <button 
+                                onClick={() => setView(ViewState.ACCESS_MANAGEMENT)}
+                                className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.ACCESS_MANAGEMENT ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'}`}
+                            >
+                                <ShieldCheck className={`mr-3 ${view === ViewState.ACCESS_MANAGEMENT ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
+                                Gestão de Acessos
+                            </button>
+                        )}
                         <button 
                             onClick={() => setView(ViewState.SETTINGS)}
                             className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.SETTINGS ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'}`}

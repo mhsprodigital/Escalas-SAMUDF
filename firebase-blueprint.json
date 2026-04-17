@@ -56,6 +56,19 @@
         "glossary": { "type": "object" },
         "shiftDefs": { "type": "object" }
       }
+    },
+    "SystemUser": {
+      "title": "SystemUser",
+      "description": "System access control user",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["ADMIN", "EDITOR", "VIEWER"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
     }
   },
   "firestore": {
@@ -70,6 +83,10 @@
     "/settings/{settingId}": {
       "schema": "Setting",
       "description": "Collection of settings"
+    },
+    "/system_users/{userId}": {
+      "schema": "SystemUser",
+      "description": "Collection of system users for access control"
     }
   }
 }

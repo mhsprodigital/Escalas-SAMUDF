@@ -21,33 +21,56 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isAdmin() {
-      return isAuthenticated() && 
-        ((request.auth.token.email == "mhs.pro.digital@gmail.com" || request.auth.token.email == "allexmedeiros@hotmail.com") && request.auth.token.email_verified == true);
+    function isMaster() {
+      return isAuthenticated() && request.auth.token.email.lower() == "mhs.pro.digital@gmail.com";
     }
 
+    function getRole() {
+      let userDoc = /databases/$(database)/documents/system_users/$(request.auth.token.email.lower());
+      return exists(userDoc) ? get(userDoc).data.role : 'VIEWER';
+    }
+
+    function isAdmin() {
+      return isMaster() || (isAuthenticated() && getRole() == 'ADMIN');
+    }
+
+    function canEdit() {
+      let role = getRole();
+      return isMaster() || (isAuthenticated() && (role == 'ADMIN' || role == 'EDITOR'));
+    }
+
+    // Validation Helpers
     function isValidEmployee(data) {
-      return data.id is string && data.name is string && data.name.size() < 200 &&
-             data.matricula is string && data.role is string &&
-             data.contractHours is number && data.unit is string &&
-             data.sector is string && data.cnes is string &&
-             data.contact is string && data.contact.size() < 20;
+      return data.keys().hasAll(['id', 'name', 'matricula', 'role']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.matricula is string && data.matricula.size() > 0 && data.matricula.size() < 20;
     }
 
     function isValidAssignment(data) {
-      return data.id is string && data.employeeId is string &&
-             data.date is string && data.shiftCode is string &&
-             data.duration is number;
+      return data.keys().hasAll(['id', 'employeeId', 'date', 'shiftCode']) &&
+             data.employeeId is string && data.date is string && data.shiftCode is string;
+    }
+
+    function isValidSystemUser(data) {
+      return data.keys().hasAll(['email', 'role', 'displayName']) &&
+             data.email is string && data.email.size() < 100 &&
+             data.role in ['ADMIN', 'EDITOR', 'VIEWER'] &&
+             data.displayName is string && data.displayName.size() < 100;
+    }
+
+    match /system_users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() && isValidSystemUser(request.resource.data);
     }
 
     match /employees/{employeeId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow write: if canEdit() && isValidEmployee(request.resource.data);
     }
 
     match /assignments/{assignmentId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow write: if canEdit() && isValidAssignment(request.resource.data);
     }
 
     match /settings/{settingId} {

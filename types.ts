@@ -75,3 +75,13 @@ export interface UnitStructure {
     name: string;
     sectors: string[];
 }
+
+export type UserRole = 'ADMIN' | 'EDITOR' | 'VIEWER';
+
+export interface SystemUser {
+    uid: string;
+    email: string;
+    displayName: string;
+    role: UserRole;
+    createdAt: string;
+}

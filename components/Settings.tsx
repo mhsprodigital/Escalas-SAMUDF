@@ -12,7 +12,11 @@ interface SettingsData {
     hours: number[];
 }
 
-const Settings: React.FC = () => {
+interface SettingsProps {
+    canEdit: boolean;
+}
+
+const Settings: React.FC<SettingsProps> = ({ canEdit }) => {
     const [settings, setSettings] = useState<SettingsData | null>(null);
     const [vehicles, setVehicles] = useState<Vehicle[]>([]);
     const [sectors, setSectors] = useState<Sector[]>([]);
@@ -190,39 +194,41 @@ const Settings: React.FC = () => {
                     </h3>
 
                     <div>
-                        <div className="flex flex-col gap-3 mb-6">
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    value={newVehicleCode}
-                                    onChange={(e) => setNewVehicleCode(e.target.value)}
-                                    placeholder="Código (ex: VTR-01)"
-                                    className="w-1/3 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gdf-secondary focus:outline-none"
-                                />
-                                <input
-                                    type="text"
-                                    value={newVehicleName}
-                                    onChange={(e) => setNewVehicleName(e.target.value)}
-                                    placeholder="Nome (ex: USA 01)"
-                                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gdf-secondary focus:outline-none"
-                                />
+                        {canEdit && (
+                            <div className="flex flex-col gap-3 mb-6">
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={newVehicleCode}
+                                        onChange={(e) => setNewVehicleCode(e.target.value)}
+                                        placeholder="Código (ex: VTR-01)"
+                                        className="w-1/3 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gdf-secondary focus:outline-none"
+                                    />
+                                    <input
+                                        type="text"
+                                        value={newVehicleName}
+                                        onChange={(e) => setNewVehicleName(e.target.value)}
+                                        placeholder="Nome (ex: USA 01)"
+                                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gdf-secondary focus:outline-none"
+                                    />
+                                </div>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={newVehiclePlate}
+                                        onChange={(e) => setNewVehiclePlate(e.target.value)}
+                                        placeholder="Placa (ex: ABC-1234)"
+                                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gdf-secondary focus:outline-none"
+                                    />
+                                    <button 
+                                        onClick={handleAddVehicle}
+                                        className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2 font-medium shadow-sm transition-colors"
+                                    >
+                                        <Plus size={18} />
+                                    </button>
+                                </div>
                             </div>
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    value={newVehiclePlate}
-                                    onChange={(e) => setNewVehiclePlate(e.target.value)}
-                                    placeholder="Placa (ex: ABC-1234)"
-                                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gdf-secondary focus:outline-none"
-                                />
-                                <button 
-                                    onClick={handleAddVehicle}
-                                    className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2 font-medium shadow-sm transition-colors"
-                                >
-                                    <Plus size={18} />
-                                </button>
-                            </div>
-                        </div>
+                        )}
 
                         <div className="grid grid-cols-1 gap-2 max-h-[300px] overflow-y-auto pr-1">
                             {vehicles.map((vehicle) => (
@@ -240,20 +246,24 @@ const Settings: React.FC = () => {
                                         </div>
                                     </div>
                                     <div className="flex gap-1">
-                                        <button 
-                                            onClick={() => handleToggleBlockVehicle(vehicle)}
-                                            className={`p-1.5 rounded-full transition-colors ${vehicle.isBlocked ? 'text-green-600 hover:bg-green-100' : 'text-orange-500 hover:bg-orange-100'}`}
-                                            title={vehicle.isBlocked ? "Desbloquear Viatura" : "Bloquear Viatura"}
-                                        >
-                                            {vehicle.isBlocked ? <Unlock size={16} /> : <Lock size={16} />}
-                                        </button>
-                                        <button 
-                                            onClick={() => deleteVehicle(vehicle.id)}
-                                            className="text-gray-400 hover:text-red-500 p-1.5 rounded-full hover:bg-red-50 transition-colors"
-                                            title="Remover Viatura"
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
+                                        {canEdit && (
+                                            <button 
+                                                onClick={() => handleToggleBlockVehicle(vehicle)}
+                                                className={`p-1.5 rounded-full transition-colors ${vehicle.isBlocked ? 'text-green-600 hover:bg-green-100' : 'text-orange-500 hover:bg-orange-100'}`}
+                                                title={vehicle.isBlocked ? "Desbloquear Viatura" : "Bloquear Viatura"}
+                                            >
+                                                {vehicle.isBlocked ? <Unlock size={16} /> : <Lock size={16} />}
+                                            </button>
+                                        )}
+                                        {canEdit && (
+                                            <button 
+                                                onClick={() => deleteVehicle(vehicle.id)}
+                                                className="text-gray-400 hover:text-red-500 p-1.5 rounded-full hover:bg-red-50 transition-colors"
+                                                title="Remover Viatura"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             ))}
@@ -274,21 +284,23 @@ const Settings: React.FC = () => {
                     </h3>
 
                     <div>
-                         <div className="flex gap-3 mb-6">
-                            <input
-                                type="text"
-                                value={newSectorName}
-                                onChange={(e) => setNewSectorName(e.target.value)}
-                                placeholder="Ex: Sala Vermelha, UCIn..."
-                                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gdf-secondary focus:outline-none"
-                            />
-                            <button 
-                                onClick={handleAddSector}
-                                className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2 font-medium shadow-sm transition-colors"
-                            >
-                                <Plus size={18} />
-                            </button>
-                        </div>
+                        {canEdit && (
+                             <div className="flex gap-3 mb-6">
+                                <input
+                                    type="text"
+                                    value={newSectorName}
+                                    onChange={(e) => setNewSectorName(e.target.value)}
+                                    placeholder="Ex: Sala Vermelha, UCIn..."
+                                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gdf-secondary focus:outline-none"
+                                />
+                                <button 
+                                    onClick={handleAddSector}
+                                    className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2 font-medium shadow-sm transition-colors"
+                                >
+                                    <Plus size={18} />
+                                </button>
+                            </div>
+                        )}
 
                         <div className="grid grid-cols-1 gap-2 max-h-[300px] overflow-y-auto pr-1">
                             {sectors.map((sector) => (
@@ -299,13 +311,15 @@ const Settings: React.FC = () => {
                                         </div>
                                         <span className="text-sm font-medium text-gray-700">{sector.name}</span>
                                     </div>
-                                    <button 
-                                        onClick={() => deleteSector(sector.id)}
-                                        className="text-gray-400 hover:text-red-500 p-1 rounded-full hover:bg-red-50 transition-colors"
-                                        title="Remover Setor"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
+                                    {canEdit && (
+                                        <button 
+                                            onClick={() => deleteSector(sector.id)}
+                                            className="text-gray-400 hover:text-red-500 p-1 rounded-full hover:bg-red-50 transition-colors"
+                                            title="Remover Setor"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    )}
                                 </div>
                             ))}
                             {sectors.length === 0 && (
@@ -326,33 +340,37 @@ const Settings: React.FC = () => {
                         <Clock size={20} className="text-gdf-secondary"/> Cargas Horárias Permitidas
                     </h3>
 
-                    <div className="flex gap-3 mb-6">
-                        <input
-                            type="number"
-                            value={newHour}
-                            onChange={(e) => setNewHour(e.target.value)}
-                            placeholder="Ex: 12, 24, 44..."
-                            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gdf-secondary focus:outline-none"
-                        />
-                        <button 
-                            onClick={handleAddHour}
-                            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2 font-medium shadow-sm transition-colors"
-                        >
-                            <Plus size={18} />
-                        </button>
-                    </div>
+                    {canEdit && (
+                        <div className="flex gap-3 mb-6">
+                            <input
+                                type="number"
+                                value={newHour}
+                                onChange={(e) => setNewHour(e.target.value)}
+                                placeholder="Ex: 12, 24, 44..."
+                                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gdf-secondary focus:outline-none"
+                            />
+                            <button 
+                                onClick={handleAddHour}
+                                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2 font-medium shadow-sm transition-colors"
+                            >
+                                <Plus size={18} />
+                            </button>
+                        </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-3 max-h-[300px] overflow-y-auto pr-1">
                         {settings.hours.map((hour: number) => (
                             <div key={hour} className="flex justify-between items-center p-3 bg-blue-50 rounded-lg border border-blue-100">
                                 <span className="text-sm font-bold text-blue-800">{hour} Horas</span>
-                                <button 
-                                    onClick={() => handleDeleteHour(hour)}
-                                    className="text-blue-300 hover:text-red-500 p-1 rounded-full hover:bg-red-50 transition-colors"
-                                    title="Remover Carga Horária"
-                                >
-                                    <Trash2 size={16} />
-                                </button>
+                                {canEdit && (
+                                    <button 
+                                        onClick={() => handleDeleteHour(hour)}
+                                        className="text-blue-300 hover:text-red-500 p-1 rounded-full hover:bg-red-50 transition-colors"
+                                        title="Remover Carga Horária"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                )}
                             </div>
                         ))}
                     </div>

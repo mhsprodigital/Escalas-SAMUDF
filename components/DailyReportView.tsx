@@ -11,6 +11,7 @@ interface DailyReportViewProps {
     vehicles: Vehicle[];
     sectors: Sector[];
     onAssignmentsChange: (assignments: ShiftAssignment[]) => void;
+    canEdit: boolean;
 }
 
 const ROLE_COLORS: Record<string, string> = {
@@ -23,7 +24,7 @@ const ROLE_COLORS: Record<string, string> = {
     'Administrativo': '#6b7280',
 };
 
-const DailyReportView: React.FC<DailyReportViewProps> = ({ employees = [], assignments = [], shiftDefs = {}, vehicles = [], sectors = [], onAssignmentsChange }) => {
+const DailyReportView: React.FC<DailyReportViewProps> = ({ employees = [], assignments = [], shiftDefs = {}, vehicles = [], sectors = [], onAssignmentsChange, canEdit }) => {
     const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
     const [selectedShift, setSelectedShift] = useState<string>('Todos');
 
@@ -339,7 +340,8 @@ const DailyReportView: React.FC<DailyReportViewProps> = ({ employees = [], assig
                                                         <td className="px-4 py-2 text-sm text-center font-semibold text-gray-700">{s.def.hours}h</td>
                                                         <td className="px-4 py-2 text-sm text-center">
                                                             <select
-                                                                className="border border-gray-300 rounded text-xs p-1 bg-white max-w-[150px]"
+                                                                className={`border border-gray-300 rounded text-xs p-1 bg-white max-w-[150px] ${!canEdit ? 'bg-gray-50 cursor-not-allowed opacity-75' : ''}`}
+                                                                disabled={!canEdit}
                                                                 value={s.assignment.allocation ? `${s.assignment.allocation.type}_${s.assignment.allocation.id}` : 'NONE'}
                                                                 onChange={(e) => {
                                                                     const val = e.target.value;

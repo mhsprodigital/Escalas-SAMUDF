@@ -11,7 +11,7 @@ import {
     writeBatch
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { Employee, ShiftAssignment, UnitStructure, ShiftDefinition, Vehicle, Sector } from '../types';
+import { Employee, ShiftAssignment, UnitStructure, ShiftDefinition, Vehicle, Sector, SystemUser } from '../types';
 import { SHIFT_DEFINITIONS as DEFAULT_SHIFT_DEFINITIONS, LEGEND_GLOSSARY as DEFAULT_LEGEND_GLOSSARY } from '../constants';
 
 export const syncDefaultSettings = async (): Promise<void> => {
@@ -140,6 +140,45 @@ export const subscribeToSectors = (callback: (sectors: Sector[]) => void) => {
         const sectors = snapshot.docs.map(doc => doc.data() as Sector);
         callback(sectors);
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'sectors'));
+};
+
+export const subscribeToSystemUsers = (callback: (users: SystemUser[]) => void) => {
+    const q = collection(db, 'system_users');
+    return onSnapshot(q, (snapshot) => {
+        const users = snapshot.docs.map(doc => doc.data() as SystemUser);
+        callback(users);
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'system_users'));
+};
+
+export const getSystemUserByEmail = async (email: string): Promise<SystemUser | null> => {
+    try {
+        const docRef = doc(db, 'system_users', email);
+        const snapshot = await getDoc(docRef);
+        return snapshot.exists() ? (snapshot.data() as SystemUser) : null;
+    } catch (error) {
+        handleFirestoreError(error, OperationType.GET, `system_users/${email}`);
+        return null;
+    }
+};
+
+export const saveSystemUser = async (user: SystemUser): Promise<void> => {
+    try {
+        // We use email as the document ID for security rules lookup
+        await setDoc(doc(db, 'system_users', user.email.toLowerCase()), {
+            ...user,
+            email: user.email.toLowerCase()
+        });
+    } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `system_users/${user.email}`);
+    }
+};
+
+export const deleteSystemUser = async (email: string): Promise<void> => {
+    try {
+        await deleteDoc(doc(db, 'system_users', email.toLowerCase()));
+    } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `system_users/${email}`);
+    }
 };
 
 const DEFAULT_UNITS: UnitStructure[] = [
