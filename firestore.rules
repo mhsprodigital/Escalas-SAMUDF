@@ -60,17 +60,20 @@ service cloud.firestore {
 
     match /system_users/{userId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin() && isValidSystemUser(request.resource.data);
+      allow create, update: if isAdmin() && isValidSystemUser(request.resource.data);
+      allow delete: if isAdmin();
     }
 
     match /employees/{employeeId} {
       allow read: if isAuthenticated();
-      allow write: if canEdit() && isValidEmployee(request.resource.data);
+      allow create, update: if canEdit() && isValidEmployee(request.resource.data);
+      allow delete: if canEdit();
     }
 
     match /assignments/{assignmentId} {
       allow read: if isAuthenticated();
-      allow write: if canEdit() && isValidAssignment(request.resource.data);
+      allow create, update: if canEdit() && isValidAssignment(request.resource.data);
+      allow delete: if canEdit();
     }
 
     match /settings/{settingId} {
