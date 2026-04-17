@@ -210,6 +210,7 @@ const App: React.FC = () => {
                 );
             
             case ViewState.STAFF_LIST:
+                if (!canEdit) return <Dashboard employees={employees} assignments={assignments} startDate={currentWeekStart} shiftDefs={settings.shiftDefs} />;
                 return (
                     <div className="bg-white rounded-lg shadow overflow-hidden">
                         <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
@@ -298,6 +299,7 @@ const App: React.FC = () => {
                 );
 
             case ViewState.STAFF_FORM:
+                if (!canEdit) return <Dashboard employees={employees} assignments={assignments} startDate={currentWeekStart} shiftDefs={settings.shiftDefs} />;
                 return (
                     <StaffForm 
                         onSave={handleSaveEmployee} 
@@ -320,15 +322,19 @@ const App: React.FC = () => {
                 );
             
             case ViewState.SETTINGS:
+                if (!isAdmin) return <Dashboard employees={employees} assignments={assignments} startDate={currentWeekStart} shiftDefs={settings.shiftDefs} />;
                 return <Settings canEdit={isAdmin} />;
 
             case ViewState.ACCESS_MANAGEMENT:
+                if (!isAdmin) return <Dashboard employees={employees} assignments={assignments} startDate={currentWeekStart} shiftDefs={settings.shiftDefs} />;
                 return <AccessManagement />;
 
             case ViewState.RULES:
+                if (!isAdmin) return <Dashboard employees={employees} assignments={assignments} startDate={currentWeekStart} shiftDefs={settings.shiftDefs} />;
                 return <RulesView />;
 
             case ViewState.REPORTS:
+                if (!canEdit) return <Dashboard employees={employees} assignments={assignments} startDate={currentWeekStart} shiftDefs={settings.shiftDefs} />;
                 return (
                     <ReportsView 
                         employees={employees}
@@ -368,14 +374,6 @@ const App: React.FC = () => {
                     </button>
 
                     <button 
-                        onClick={() => setView(ViewState.STAFF_LIST)}
-                        className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.STAFF_LIST || view === ViewState.STAFF_FORM ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'}`}
-                    >
-                        <Users className={`mr-3 ${view === ViewState.STAFF_LIST || view === ViewState.STAFF_FORM ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
-                        Servidores
-                    </button>
-
-                    <button 
                         onClick={() => setView(ViewState.SCALE)}
                         className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.SCALE ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'}`}
                     >
@@ -383,21 +381,35 @@ const App: React.FC = () => {
                         Escala Mensal
                     </button>
 
-                    <button 
-                        onClick={() => setView(ViewState.REPORTS)}
-                        className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.REPORTS ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'}`}
-                    >
-                        <FileText className={`mr-3 ${view === ViewState.REPORTS ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
-                        Relatórios
-                    </button>
+                    {canEdit && (
+                        <button 
+                            onClick={() => setView(ViewState.STAFF_LIST)}
+                            className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.STAFF_LIST || view === ViewState.STAFF_FORM ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'}`}
+                        >
+                            <Users className={`mr-3 ${view === ViewState.STAFF_LIST || view === ViewState.STAFF_FORM ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
+                            Servidores
+                        </button>
+                    )}
 
-                    <button 
-                        onClick={() => setView(ViewState.RULES)}
-                        className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.RULES ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'}`}
-                    >
-                        <BookOpen className={`mr-3 ${view === ViewState.RULES ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
-                        Regras & Portarias
-                    </button>
+                    {canEdit && (
+                        <button 
+                            onClick={() => setView(ViewState.REPORTS)}
+                            className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.REPORTS ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'}`}
+                        >
+                            <FileText className={`mr-3 ${view === ViewState.REPORTS ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
+                            Relatórios
+                        </button>
+                    )}
+
+                    {isAdmin && (
+                        <button 
+                            onClick={() => setView(ViewState.RULES)}
+                            className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.RULES ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'}`}
+                        >
+                            <BookOpen className={`mr-3 ${view === ViewState.RULES ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
+                            Regras & Portarias
+                        </button>
+                    )}
 
                     <div className="pt-4 mt-4 border-t border-gray-700">
                         {isAdmin && (
@@ -409,13 +421,15 @@ const App: React.FC = () => {
                                 Gestão de Acessos
                             </button>
                         )}
-                        <button 
-                            onClick={() => setView(ViewState.SETTINGS)}
-                            className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.SETTINGS ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'}`}
-                        >
-                            <SettingsIcon className={`mr-3 ${view === ViewState.SETTINGS ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
-                            Configurações
-                        </button>
+                        {isAdmin && (
+                            <button 
+                                onClick={() => setView(ViewState.SETTINGS)}
+                                className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.SETTINGS ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'}`}
+                            >
+                                <SettingsIcon className={`mr-3 ${view === ViewState.SETTINGS ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
+                                Configurações
+                            </button>
+                        )}
                     </div>
                 </nav>
 
