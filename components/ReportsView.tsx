@@ -66,21 +66,32 @@ const ReportsView: React.FC<ReportsViewProps> = ({ employees = [], assignments =
     }, [assignments, selectedMonth, selectedYear]);
 
     // 1. Report of everyone on duty, separated by professional categories
-    const onDutyByRole = useMemo<Record<string, { employee: Employee, totalHours: number, shifts: number }[]>>(() => {
-        const result: Record<string, { employee: Employee, totalHours: number, shifts: number }[]> = {};
+    const onDutyByRole = useMemo<Record<string, { employee: Employee, totalHours: number, shifts: number, tpdHours: number, bhHours: number, absenceHours: number, tpdShifts: number, bhPositiveHours: number, bhNegativeHours: number }[]>>(() => {
+        const result: Record<string, { employee: Employee, totalHours: number, shifts: number, tpdHours: number, bhHours: number, absenceHours: number, tpdShifts: number, bhPositiveHours: number, bhNegativeHours: number }[]> = {};
         
         Object.keys(ROLE_COLORS).forEach(role => {
             result[role] = [];
         });
 
-        const employeeStats: Record<string, { totalHours: number, shifts: number }> = {};
+        const employeeStats: Record<string, { totalHours: number, shifts: number, tpdHours: number, tpdShifts: number, bhPositiveHours: number, bhNegativeHours: number, absenceHours: number }> = {};
 
         monthAssignments.forEach(a => {
             const def = shiftDefs[a.shiftCode];
-            if (def && def.category !== 'Afastamento') {
-                if (!employeeStats[a.employeeId]) {
-                    employeeStats[a.employeeId] = { totalHours: 0, shifts: 0 };
-                }
+            const cat = a.category || def?.category;
+            
+            if (!employeeStats[a.employeeId]) {
+                employeeStats[a.employeeId] = { totalHours: 0, shifts: 0, tpdHours: 0, tpdShifts: 0, bhPositiveHours: 0, bhNegativeHours: 0, absenceHours: 0 };
+            }
+            
+            if (cat === 'Legenda Especial') {
+                employeeStats[a.employeeId].tpdHours += a.duration;
+                employeeStats[a.employeeId].tpdShifts += 1;
+            } else if (cat === 'Banco de Horas') {
+                if (a.duration > 0) employeeStats[a.employeeId].bhPositiveHours += a.duration;
+                else employeeStats[a.employeeId].bhNegativeHours += Math.abs(a.duration);
+            } else if (cat === 'Afastamento') {
+                employeeStats[a.employeeId].absenceHours += a.duration;
+            } else {
                 employeeStats[a.employeeId].totalHours += a.duration;
                 employeeStats[a.employeeId].shifts += 1;
             }
@@ -91,7 +102,13 @@ const ReportsView: React.FC<ReportsViewProps> = ({ employees = [], assignments =
                 result[emp.role].push({
                     employee: emp,
                     totalHours: employeeStats[emp.id].totalHours,
-                    shifts: employeeStats[emp.id].shifts
+                    shifts: employeeStats[emp.id].shifts,
+                    tpdHours: employeeStats[emp.id].tpdHours,
+                    tpdShifts: employeeStats[emp.id].tpdShifts,
+                    bhHours: employeeStats[emp.id].bhPositiveHours - employeeStats[emp.id].bhNegativeHours,
+                    bhPositiveHours: employeeStats[emp.id].bhPositiveHours,
+                    bhNegativeHours: employeeStats[emp.id].bhNegativeHours,
+                    absenceHours: employeeStats[emp.id].absenceHours
                 });
             }
         });
@@ -417,8 +434,10 @@ const ReportsView: React.FC<ReportsViewProps> = ({ employees = [], assignments =
                                             <tr>
                                                 <th className="px-4 py-2 text-left text-xs font-bold text-gray-500 uppercase">Servidor</th>
                                                 <th className="px-4 py-2 text-left text-xs font-bold text-gray-500 uppercase">Matrícula</th>
-                                                <th className="px-4 py-2 text-center text-xs font-bold text-gray-500 uppercase">Plantões Realizados</th>
-                                                <th className="px-4 py-2 text-center text-xs font-bold text-gray-500 uppercase">Horas Totais</th>
+                                                <th className="px-4 py-2 text-center text-xs font-bold text-gray-500 uppercase">Horas (Assistência)</th>
+                                                <th className="px-4 py-2 text-center text-xs font-bold text-gray-500 uppercase">Afast.(h)</th>
+                                                <th className="px-4 py-2 text-center text-xs font-bold text-gray-500 uppercase">TPD (h)</th>
+                                                <th className="px-4 py-2 text-center text-xs font-bold text-gray-500 uppercase">Saldo BH</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100">
@@ -433,8 +452,12 @@ const ReportsView: React.FC<ReportsViewProps> = ({ employees = [], assignments =
                                                         </div>
                                                     </td>
                                                     <td className="px-4 py-2 text-sm text-gray-500">{s.employee.matricula}</td>
-                                                    <td className="px-4 py-2 text-sm text-center font-semibold text-blue-600">{s.shifts}</td>
-                                                    <td className="px-4 py-2 text-sm text-center font-semibold text-gray-700">{s.totalHours}h</td>
+                                                    <td className="px-4 py-2 text-sm text-center font-bold text-blue-600">{s.totalHours}h <span className="text-[10px] text-gray-400 font-normal">({s.shifts} plantões)</span></td>
+                                                    <td className="px-4 py-2 text-sm text-center font-semibold text-purple-600">{s.absenceHours > 0 ? `${s.absenceHours}h` : '-'}</td>
+                                                    <td className="px-4 py-2 text-sm text-center font-semibold text-yellow-600">{s.tpdHours > 0 ? `${s.tpdHours}h` : '-'}</td>
+                                                    <td className={`px-4 py-2 text-sm text-center font-semibold ${s.bhHours === 0 ? 'text-gray-400' : s.bhHours > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                        {s.bhHours === 0 ? '-' : `${s.bhHours > 0 ? '+' : ''}${s.bhHours}h`}
+                                                    </td>
                                                 </tr>
                                             ))}
                                         </tbody>

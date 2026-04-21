@@ -9,7 +9,8 @@ import Settings from './components/Settings';
 import RulesView from './components/RulesView';
 import ReportsView from './components/ReportsView';
 import AccessManagement from './components/AccessManagement';
-import { FileText, ShieldCheck } from 'lucide-react';
+import DossierView from './components/DossierView';
+import { FileText, ShieldCheck, FileDigit } from 'lucide-react';
 import ConfirmModal from './components/ConfirmModal';
 import { auth } from './firebase';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User } from 'firebase/auth';
@@ -22,7 +23,8 @@ enum ViewState {
     RULES = 'RULES',
     REPORTS = 'REPORTS',
     SETTINGS = 'SETTINGS',
-    ACCESS_MANAGEMENT = 'ACCESS_MANAGEMENT'
+    ACCESS_MANAGEMENT = 'ACCESS_MANAGEMENT',
+    DOSSIER = 'DOSSIER'
 }
 
 const App: React.FC = () => {
@@ -35,6 +37,20 @@ const App: React.FC = () => {
     const [vehicles, setVehicles] = useState<Vehicle[]>([]);
     const [sectors, setSectors] = useState<Sector[]>([]);
     const [settings, setSettings] = useState<any>(null);
+    const professionalCategories = settings?.professionalCategories || {
+        'Enfermeiro(a)': '#0056b3',
+        'Técnico(a) em Enfermagem': '#00a8cc',
+        'Médico(a)': '#10b981',
+        'Fisioterapeuta': '#f59e0b',
+        'Nutricionista': '#8b5cf6',
+        'Psicólogo(a)': '#ec4899',
+    };
+    
+    const setProfessionalCategories = async (newCats: Record<string, string>) => {
+        const newSettings = { ...settings, professionalCategories: newCats };
+        await saveSettings(newSettings);
+    };
+
     const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
     const [currentWeekStart, setCurrentWeekStart] = useState<Date>(new Date());
     const [isInitialLoading, setIsInitialLoading] = useState(true);
@@ -206,6 +222,8 @@ const App: React.FC = () => {
                         assignments={assignments}
                         startDate={currentWeekStart}
                         shiftDefs={settings.shiftDefs}
+                        professionalCategories={professionalCategories}
+                        setProfessionalCategories={setProfessionalCategories}
                     />
                 );
             
@@ -322,8 +340,8 @@ const App: React.FC = () => {
                 );
             
             case ViewState.SETTINGS:
-                if (!isAdmin) return <Dashboard employees={employees} assignments={assignments} startDate={currentWeekStart} shiftDefs={settings.shiftDefs} />;
-                return <Settings canEdit={isAdmin} />;
+                if (!isAdmin) return <Dashboard employees={employees} assignments={assignments} startDate={currentWeekStart} shiftDefs={settings.shiftDefs} professionalCategories={professionalCategories} setProfessionalCategories={setProfessionalCategories} />;
+                return <Settings canEdit={isAdmin} professionalCategories={professionalCategories} setProfessionalCategories={setProfessionalCategories} employees={employees} />;
 
             case ViewState.ACCESS_MANAGEMENT:
                 if (!isAdmin) return <Dashboard employees={employees} assignments={assignments} startDate={currentWeekStart} shiftDefs={settings.shiftDefs} />;
@@ -345,6 +363,16 @@ const App: React.FC = () => {
                         sectors={sectors}
                         onAssignmentsChange={handleAssignmentsChange}
                         canEdit={canEdit}
+                    />
+                );
+
+            case ViewState.DOSSIER:
+                if (!canEdit) return <Dashboard employees={employees} assignments={assignments} startDate={currentWeekStart} shiftDefs={settings.shiftDefs} />;
+                return (
+                    <DossierView 
+                        employees={employees}
+                        assignments={assignments}
+                        shiftDefs={settings.shiftDefs}
                     />
                 );
 
@@ -412,6 +440,15 @@ const App: React.FC = () => {
                     )}
 
                     <div className="pt-4 mt-4 border-t border-gray-700">
+                        {canEdit && (
+                            <button 
+                                onClick={() => setView(ViewState.DOSSIER)}
+                                className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.DOSSIER ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'}`}
+                            >
+                                <FileDigit className={`mr-3 ${view === ViewState.DOSSIER ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
+                                Dossiê do Servidor
+                            </button>
+                        )}
                         {isAdmin && (
                             <button 
                                 onClick={() => setView(ViewState.ACCESS_MANAGEMENT)}

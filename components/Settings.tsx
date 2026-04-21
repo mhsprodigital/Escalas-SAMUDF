@@ -14,12 +14,20 @@ interface SettingsData {
 
 interface SettingsProps {
     canEdit: boolean;
+    professionalCategories: Record<string, string>;
+    setProfessionalCategories: (newCats: Record<string, string>) => void;
+    employees: Employee[];
 }
 
-const Settings: React.FC<SettingsProps> = ({ canEdit }) => {
+const Settings: React.FC<SettingsProps> = ({ canEdit, professionalCategories, setProfessionalCategories, employees }) => {
     const [settings, setSettings] = useState<SettingsData | null>(null);
     const [vehicles, setVehicles] = useState<Vehicle[]>([]);
     const [sectors, setSectors] = useState<Sector[]>([]);
+    
+    // Category Management
+    const [newCatName, setNewCatName] = useState('');
+    const [reassignMap, setReassignMap] = useState<Record<string, string>>({});
+    const [categoryToDelete, setCategoryToDelete] = useState<string | null>(null);
     
     // New Vehicle State
     const [newVehicleCode, setNewVehicleCode] = useState('');
@@ -99,7 +107,32 @@ const Settings: React.FC<SettingsProps> = ({ canEdit }) => {
         await saveSettings({ ...settings, hours: updatedHours });
     };
 
-    // --- CSV Export Handler ---
+    const handleAddCategory = () => {
+        if (!newCatName.trim()) return;
+        setProfessionalCategories({ ...professionalCategories, [newCatName]: '#000000' });
+        setNewCatName('');
+    };
+
+    const confirmCategoryDeletion = () => {
+        if (!categoryToDelete) return;
+        
+        // Finalize reassignment for all affected employees
+        const affectedEmployees = employees.filter(e => e.role === categoryToDelete);
+        affectedEmployees.forEach(emp => {
+            if (reassignMap[emp.id]) {
+                saveEmployee({...emp, role: reassignMap[emp.id]});
+            }
+        });
+        
+        const newCats = { ...professionalCategories };
+        delete newCats[categoryToDelete];
+        setProfessionalCategories(newCats);
+        setCategoryToDelete(null);
+        setReassignMap({});
+    };
+
+    const affectedEmployees = categoryToDelete ? employees.filter(e => e.role === categoryToDelete) : [];
+    const canDeleteCategory = affectedEmployees.every(emp => !!reassignMap[emp.id]);
     const handleExportCSV = async () => {
         if (!exportStartDate || !exportEndDate) {
             alert('Por favor, selecione o período para exportação.');
@@ -376,6 +409,77 @@ const Settings: React.FC<SettingsProps> = ({ canEdit }) => {
                     </div>
                 </div>
             </div>
+
+            <div className="bg-white rounded-lg shadow border border-gray-200 p-6">
+                <h3 className="font-semibold text-gray-700 mb-6 flex items-center gap-2 text-lg border-b pb-2">
+                    <Briefcase size={20} className="text-gdf-secondary"/> Categorias Profissionais
+                </h3>
+                {canEdit && (
+                     <div className="flex gap-3 mb-6">
+                        <input
+                            type="text"
+                            value={newCatName}
+                            onChange={(e) => setNewCatName(e.target.value)}
+                            placeholder="Nova Categoria..."
+                            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gdf-secondary focus:outline-none"
+                        />
+                        <button 
+                            onClick={handleAddCategory}
+                            className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2 font-medium shadow-sm transition-colors"
+                        >
+                            <Plus size={18} />
+                        </button>
+                    </div>
+                )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {Object.entries(professionalCategories).map(([cat, color]) => (
+                        <div key={cat} className="flex items-center gap-2 border p-3 rounded-lg bg-gray-50">
+                            <input type="color" value={color} onChange={(e) => setProfessionalCategories({...professionalCategories, [cat]: e.target.value})} className="w-8 h-8 rounded" />
+                            <span className="text-sm font-semibold flex-grow">{cat}</span>
+                            {canEdit && (
+                                <button onClick={() => setCategoryToDelete(cat)} className="text-gray-400 hover:text-red-500">
+                                    <Trash2 size={16} />
+                                </button>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Reassignment Modal */}
+            {categoryToDelete && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+                    <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg">
+                        <h3 className="font-bold text-lg mb-4 text-red-600">Realocação de Profissionais: {categoryToDelete}</h3>
+                        <p className="text-sm text-gray-600 mb-4">Esta categoria está em uso. Por favor, realloque cada profissional abaixo para uma das categorias existentes:</p>
+                        <div className="space-y-3 max-h-[300px] overflow-y-auto mb-6">
+                            {affectedEmployees.map(emp => (
+                                <div key={emp.id} className="flex justify-between items-center bg-gray-50 p-2 rounded">
+                                    <span className="text-sm font-medium">{emp.name}</span>
+                                    <select 
+                                        className="text-sm border rounded p-1"
+                                        value={reassignMap[emp.id] || ''}
+                                        onChange={(e) => setReassignMap({...reassignMap, [emp.id]: e.target.value})}
+                                    >
+                                        <option value="">Selecione nova categoria</option>
+                                        {Object.keys(professionalCategories).filter(c => c !== categoryToDelete).map(c => <option key={c} value={c}>{c}</option>)}
+                                    </select>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="flex justify-end gap-3">
+                            <button onClick={() => { setCategoryToDelete(null); setReassignMap({}); }} className="px-4 py-2 border rounded-lg">Cancelar</button>
+                            <button 
+                                disabled={!canDeleteCategory}
+                                onClick={confirmCategoryDeletion} 
+                                className="px-4 py-2 bg-red-600 text-white rounded-lg disabled:opacity-50"
+                            >
+                                Excluir e Realocar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* CSV Export Section */}
             <div className="bg-white rounded-lg shadow border border-gray-200 p-6 mt-8">

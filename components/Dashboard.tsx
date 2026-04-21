@@ -8,6 +8,8 @@ interface DashboardProps {
     assignments: ShiftAssignment[];
     startDate: Date;
     shiftDefs: Record<string, ShiftDefinition>;
+    professionalCategories: Record<string, string>;
+    setProfessionalCategories: (newCats: Record<string, string>) => void;
 }
 
 interface DrillDownData {
@@ -29,21 +31,22 @@ const ROLE_COLORS: Record<string, string> = {
     'Nutricionista': '#8b5cf6',
     'Psicólogo(a)': '#ec4899',
     'Administrativo': '#6b7280',
-    'Administrador': '#1e293b',
     'Afastamento': '#9ca3af',
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate, shiftDefs }) => {
+const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate, shiftDefs, professionalCategories, setProfessionalCategories }) => {
     const [drillDown, setDrillDown] = useState<DrillDownData | null>(null);
     const [showPendencies, setShowPendencies] = useState(false);
     const [showStaffList, setShowStaffList] = useState(false);
     
     const [roleFilter, setRoleFilter] = useState<string>('Todos');
     const [periodFilter, setPeriodFilter] = useState<string>('Todos');
+    const [chartMetric, setChartMetric] = useState<'hours' | 'professionals'>('hours');
     
     // Month and Year Filters
     const [selectedMonth, setSelectedMonth] = useState<number>(startDate.getMonth());
     const [selectedYear, setSelectedYear] = useState<number>(startDate.getFullYear());
+    const [activeModal, setActiveModal] = useState<'staff' | 'tpd' | 'absences' | 'pendencies' | null>(null);
 
     const months = [
         'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -84,7 +87,16 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
             const validStaffIds = new Set(
                 assignments
                     .filter(a => a.shiftCode !== 'BLK' && monthDateStrings.has(a.date))
-                    .filter(a => shiftDefs[a.shiftCode]?.category === periodFilter)
+                    .filter(a => {
+                        const shiftDef = shiftDefs[a.shiftCode];
+                        const cat = a.category || shiftDef?.category;
+                        if (periodFilter === 'Manhã' || periodFilter === 'Tarde') {
+                            if (a.shiftCode.includes('SM6 ST6')) return true;
+                        }
+                        if (periodFilter === 'Legenda Especial' && cat === 'Legenda Especial') return true;
+                        if (periodFilter === 'Afastamento' && cat === 'Afastamento') return true;
+                        return cat === periodFilter;
+                    })
                     .map(a => a.employeeId)
             );
             emps = emps.filter(e => validStaffIds.has(e.id));
@@ -97,11 +109,13 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
     const filteredAssignments = useMemo(() => {
         let filtered = assignments.filter(a => {
             const def = shiftDefs[a.shiftCode];
+            const cat = a.category || def?.category;
             // Excluir bloqueios, datas fora do mês e afastamentos/banco de horas da contagem de ASSISTÊNCIA
             return a.shiftCode !== 'BLK' && 
                    monthDateStrings.has(a.date) && 
-                   def?.category !== 'Afastamento' && 
-                   def?.category !== 'Banco de Horas';
+                   cat !== 'Afastamento' && 
+                   cat !== 'Banco de Horas' &&
+                   cat !== 'Legenda Especial'; // TPDs não entram em carga horária normal
         });
         
         if (roleFilter !== 'Todos') {
@@ -114,7 +128,11 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
         if (periodFilter !== 'Todos') {
             filtered = filtered.filter(a => {
                 const shiftDef = shiftDefs[a.shiftCode];
-                return shiftDef?.category === periodFilter;
+                const cat = a.category || shiftDef?.category;
+                if (periodFilter === 'Manhã' || periodFilter === 'Tarde') {
+                    if (a.shiftCode.includes('SM6 ST6')) return true;
+                }
+                return cat === periodFilter;
             });
         }
         
@@ -129,13 +147,40 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
     const bankStats = useMemo(() => {
         const monthBanks = assignments.filter(a => {
             const def = shiftDefs[a.shiftCode];
-            return monthDateStrings.has(a.date) && def?.category === 'Banco de Horas';
+            const cat = a.category || def?.category;
+            return monthDateStrings.has(a.date) && cat === 'Banco de Horas';
         });
         
         const positive = monthBanks.filter(a => a.duration > 0).reduce((sum, a) => sum + a.duration, 0);
         const negative = monthBanks.filter(a => a.duration < 0).reduce((sum, a) => sum + a.duration, 0);
         
         return { positive, negative, total: positive + negative };
+    }, [assignments, monthDateStrings, shiftDefs]);
+
+    // TPD stats
+    const tpdStats = useMemo(() => {
+         const monthTpds = assignments.filter(a => {
+            const def = shiftDefs[a.shiftCode];
+            const cat = a.category || def?.category;
+            return monthDateStrings.has(a.date) && cat === 'Legenda Especial';
+        });
+        return {
+            count: monthTpds.length,
+            hours: monthTpds.reduce((sum, a) => sum + a.duration, 0)
+        };
+    }, [assignments, monthDateStrings, shiftDefs]);
+
+    // Afastamento stats
+    const absenceStats = useMemo(() => {
+        const monthAbsences = assignments.filter(a => {
+            const def = shiftDefs[a.shiftCode];
+            const cat = a.category || def?.category;
+            return monthDateStrings.has(a.date) && cat === 'Afastamento';
+        });
+        return {
+             count: monthAbsences.length,
+             hours: monthAbsences.reduce((sum, a) => sum + a.duration, 0)
+        };
     }, [assignments, monthDateStrings, shiftDefs]);
 
     // Pendencies calculated monthly
@@ -193,34 +238,51 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
             if (periodFilter !== 'Todos') {
                 dayAssignments = dayAssignments.filter(a => {
                     const shiftDef = shiftDefs[a.shiftCode];
-                    return shiftDef?.category === periodFilter;
+                    const cat = a.category || shiftDef?.category;
+                    if (periodFilter === 'Manhã' || periodFilter === 'Tarde') {
+                        if (a.shiftCode.includes('SM6 ST6')) return true;
+                    }
+                    return cat === periodFilter;
                 });
             }
 
             const roleCounts: Record<string, number> = {};
-            Object.keys(ROLE_COLORS).forEach(r => roleCounts[r] = 0);
+            Object.keys(professionalCategories).forEach(r => roleCounts[r] = 0);
 
             const uniqueEmployeesPerRole: Record<string, Set<string>> = {};
-            Object.keys(ROLE_COLORS).forEach(r => uniqueEmployeesPerRole[r] = new Set());
+            Object.keys(professionalCategories).forEach(r => uniqueEmployeesPerRole[r] = new Set());
 
             dayAssignments.forEach(assign => {
                 const emp = employees.find(e => e.id === assign.employeeId);
                 const shiftDef = shiftDefs[assign.shiftCode];
                 if (emp && shiftDef) {
+                    const cat = assign.category || shiftDef.category;
                     // Tratamento de BH Negativo como Afastamento para visualização no gráfico
-                    const isAbsence = shiftDef.category === 'Afastamento' || 
-                                    (shiftDef.category === 'Banco de Horas' && assign.duration < 0);
+                    const isAbsence = cat === 'Afastamento' || 
+                                    (cat === 'Banco de Horas' && assign.duration < 0);
                     
                     let roleKey = isAbsence ? 'Afastamento' : emp.role;
                     if (uniqueEmployeesPerRole[roleKey] !== undefined) {
                         uniqueEmployeesPerRole[roleKey].add(assign.employeeId);
+                        
+                        if (chartMetric === 'hours') {
+                             // If it's the combined shift and we filtered by Manhã or Tarde, 
+                             // it should probably count 6h instead of 12h in the chart. But what if it's "Todos"? Then 12h.
+                             let dur = assign.duration;
+                             if (assign.shiftCode.includes('SM6 ST6') && (periodFilter === 'Manhã' || periodFilter === 'Tarde')) {
+                                  dur = 6;
+                             }
+                             roleCounts[roleKey] += dur;
+                        }
                     }
                 }
             });
 
-            Object.keys(ROLE_COLORS).forEach(r => {
-                roleCounts[r] = uniqueEmployeesPerRole[r].size;
-            });
+            if (chartMetric === 'professionals') {
+                Object.keys(professionalCategories).forEach(r => {
+                    roleCounts[r] = uniqueEmployeesPerRole[r].size;
+                });
+            }
 
             return {
                 date: dateStr,
@@ -229,7 +291,7 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
                 ...roleCounts
             };
         });
-    }, [daysInMonth, assignments, employees, roleFilter, periodFilter]);
+    }, [daysInMonth, assignments, employees, roleFilter, periodFilter, chartMetric]);
 
     // Handle Click on Bar
     const handleBarClick = (data: any, roleKey: string) => {
@@ -239,7 +301,11 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
         if (periodFilter !== 'Todos') {
             dayAssignments = dayAssignments.filter(a => {
                 const shiftDef = shiftDefs[a.shiftCode];
-                return shiftDef?.category === periodFilter;
+                const cat = a.category || shiftDef?.category;
+                if (periodFilter === 'Manhã' || periodFilter === 'Tarde') {
+                    if (a.shiftCode.includes('SM6 ST6')) return true;
+                }
+                return cat === periodFilter;
             });
         }
 
@@ -322,61 +388,6 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
                 </div>
             )}
 
-            {/* Pendencies Modal */}
-            {showPendencies && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowPendencies(false)}>
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
-                        <div className="bg-red-50 p-4 border-b border-red-100 flex justify-between items-center">
-                            <div>
-                                <h3 className="font-bold text-red-800 text-lg flex items-center gap-2">
-                                    <AlertTriangle size={20} className="text-red-600"/>
-                                    Pendências de Carga Horária Mensal
-                                </h3>
-                                <p className="text-sm text-red-600">Diferença entre a carga mensal esperada e a alocada no mês atual</p>
-                            </div>
-                            <button onClick={() => setShowPendencies(false)} className="text-red-400 hover:text-red-600">
-                                <X size={24}/>
-                            </button>
-                        </div>
-                        <div className="p-4 max-h-[60vh] overflow-y-auto">
-                            {pendencies.length > 0 ? (
-                                <div className="space-y-3">
-                                    {pendencies.map((p, idx) => (
-                                        <div key={idx} className="flex justify-between items-center p-3 bg-white border border-gray-200 rounded-lg shadow-sm">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-10 h-10 rounded-full ${p.employee.colorIdentifier} flex items-center justify-center text-white text-sm font-bold`}>
-                                                    {p.employee.name.charAt(0)}
-                                                </div>
-                                                <div>
-                                                    <span className="font-semibold text-gray-800 block">{p.employee.name}</span>
-                                                    <span className="text-xs text-gray-500">{p.employee.role}</span>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-4">
-                                                <div className="text-right">
-                                                    <p className="text-xs text-gray-500">Contrato Mensal</p>
-                                                    <p className="font-semibold">{p.contract}h</p>
-                                                </div>
-                                                <div className="text-right">
-                                                    <p className="text-xs text-gray-500">Alocado no Mês</p>
-                                                    <p className="font-semibold">{p.assigned}h</p>
-                                                </div>
-                                                <div className={`text-right px-3 py-1 rounded ${p.diff > 0 ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                                                    <p className="text-xs font-bold">{p.diff > 0 ? 'Faltam' : 'Excedem'}</p>
-                                                    <p className="font-bold">{Math.abs(p.diff)}h</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <p className="text-center text-gray-500 py-8">Nenhuma pendência encontrada. Todos os servidores estão com a carga horária correta no mês.</p>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
-
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end border-b pb-4 gap-4">
                 <div>
                     <h2 className="text-2xl font-bold text-gray-800">Painel Gerencial</h2>
@@ -415,7 +426,7 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
                             onChange={(e) => setRoleFilter(e.target.value)}
                         >
                             <option value="Todos">Todas as Categorias</option>
-                            {Object.keys(ROLE_COLORS).map(role => (
+                            {Object.keys(professionalCategories).map(role => (
                                 <option key={role} value={role}>{role}</option>
                             ))}
                         </select>
@@ -434,90 +445,114 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
                             <option value="Banco de Horas">Banco de Horas</option>
                         </select>
                     </div>
+                    <button
+                        onClick={() => setActiveModal('settings')}
+                        className="px-3 py-2 bg-gray-100 text-gray-700 rounded-md text-xs font-bold hover:bg-gray-200 border"
+                    >
+                        Categorias
+                    </button>
                 </div>
             </div>
             
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <div 
                     className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-blue-500 flex justify-between items-center cursor-pointer hover:bg-blue-50 transition-colors"
-                    onClick={() => setShowStaffList(true)}
+                    onClick={() => setActiveModal('staff')}
                 >
                     <div>
-                        <p className="text-xs font-bold text-gray-400 uppercase">Total Servidores</p>
-                        <p className="text-2xl font-bold text-gray-800">{totalStaff}</p>
+                        <p className="text-xs font-bold text-gray-400 border-b border-gray-100 pb-1 mb-1 block">SERVIDORES / HORAS</p>
+                        <p className="text-xl font-bold text-gray-800">{totalStaff} <span className="text-sm font-normal text-gray-500">disp.</span> / {totalHoursAssigned}h</p>
                     </div>
-                    <Users className="text-blue-200" size={32} />
                 </div>
+                
                 <div 
                     className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-yellow-500 flex justify-between items-center cursor-pointer hover:bg-yellow-50 transition-colors"
-                    onClick={() => setShowStaffList(true)}
+                    onClick={() => setActiveModal('tpd')}
+                    title="Exibindo horas de Trabalho em Período de Descanso (TPD)"
                 >
                     <div>
-                        <p className="text-xs font-bold text-gray-400 uppercase">Horas Alocadas</p>
-                        <p className="text-2xl font-bold text-gray-800">{totalHoursAssigned}h</p>
+                        <p className="text-[10px] font-bold text-yellow-600 uppercase">TPD (Mensal)</p>
+                        <p className="text-lg font-bold text-gray-800">{tpdStats.count} <span className="text-sm font-normal text-gray-500">un.</span> / {tpdStats.hours}h</p>
                     </div>
-                    <Building2 className="text-yellow-200" size={32} />
                 </div>
+
+                <div 
+                    className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-purple-500 flex justify-between items-center cursor-pointer hover:bg-purple-50 transition-colors"
+                    onClick={() => setActiveModal('absences')}
+                >
+                    <div>
+                        <p className="text-[10px] font-bold text-purple-600 uppercase">Afastamentos</p>
+                        <p className="text-lg font-bold text-gray-800">{absenceStats.count} <span className="text-sm font-normal text-gray-500">un.</span> / {absenceStats.hours}h</p>
+                    </div>
+                </div>
+                
                 <div 
                     className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-red-500 flex justify-between items-center cursor-pointer hover:bg-red-50 transition-colors"
-                    onClick={() => setShowPendencies(true)}
+                    onClick={() => setActiveModal('pendencies')}
                 >
                     <div>
-                        <p className="text-xs font-bold text-gray-400 uppercase">Pendências</p>
-                        <p className="text-2xl font-bold text-gray-800">
+                        <p className="text-[10px] font-bold text-red-600 uppercase">Pendências</p>
+                        <p className="text-xl font-bold text-gray-800">
                              {pendencies.length}
                         </p>
                     </div>
-                    <AlertTriangle className="text-red-200" size={32} />
+                    <AlertTriangle className="text-red-200" size={24} />
+                </div>
+                
+                <div className="md:col-span-2">
+                    {/* Banco de Horas Summary Card Mini */}
+                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 h-full flex flex-col justify-center shadow-sm">
+                        <div className="flex items-center justify-between">
+                            <p className="text-[10px] font-bold text-orange-800 uppercase flex items-center gap-1"><TrendingUp size={12}/> Banco de Horas</p>
+                            <p className={`text-sm font-bold ${bankStats.total >= 0 ? 'text-green-600' : 'text-red-600'}`}>Saldo: {bankStats.total > 0 ? '+' : ''}{bankStats.total}h</p>
+                        </div>
+                        <div className="flex gap-4 mt-1">
+                            <div>
+                                <p className="text-[10px] uppercase font-bold text-gray-500">BH Positivo</p>
+                                <p className="text-sm font-bold text-blue-600">+{bankStats.positive}h</p>
+                            </div>
+                            <div>
+                                <p className="text-[10px] uppercase font-bold text-gray-500">BH Negativo</p>
+                                <p className="text-sm font-bold text-red-600">{bankStats.negative}h</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            {/* Banco de Horas Summary Card */}
-            {bankStats.total !== 0 && (
-                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 flex items-center justify-between shadow-sm">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-orange-100 p-2 rounded-full text-orange-600">
-                            <TrendingUp size={20} />
-                        </div>
-                        <div>
-                            <p className="text-sm font-bold text-orange-800">Resumo Banco de Horas (Mensal)</p>
-                            <p className="text-xs text-orange-600">Considerando todos os servidores filtrados</p>
-                        </div>
-                    </div>
-                    <div className="flex gap-4">
-                        <div className="text-right">
-                            <p className="text-[10px] uppercase font-bold text-gray-400">BH Positivo</p>
-                            <p className="text-lg font-bold text-blue-600">+{bankStats.positive}h</p>
-                        </div>
-                        <div className="text-right">
-                            <p className="text-[10px] uppercase font-bold text-gray-400">BH Negativo</p>
-                            <p className="text-lg font-bold text-red-600">{bankStats.negative}h</p>
-                        </div>
-                        <div className="text-right border-l pl-4 border-orange-200">
-                            <p className="text-[10px] uppercase font-bold text-gray-400">Saldo BH</p>
-                            <p className={`text-lg font-bold ${bankStats.total >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                {bankStats.total > 0 ? '+' : ''}{bankStats.total}h
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            )}
-
             {/* Daily Distribution Chart */}
             <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-lg font-bold text-gray-700 flex items-center gap-2">
-                        <Calendar className="text-gdf-primary" size={20}/>
-                        Distribuição Diária por Categoria
-                    </h3>
-                    <div className="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded border flex items-center gap-1">
-                        <Filter size={14} />
-                        Filtros aplicados ao gráfico
+                <div className="flex justify-between items-center mb-6 border-b pb-4">
+                    <div>
+                        <h3 className="text-lg font-bold text-gray-700 flex items-center gap-2">
+                            <Calendar className="text-gdf-primary" size={20}/>
+                            Distribuição Diária por Categoria
+                        </h3>
+                    </div>
+                    <div className="flex items-center gap-4">
+                         <div className="bg-gray-100 p-1 rounded-lg flex items-center shadow-inner">
+                            <button 
+                                onClick={() => setChartMetric('hours')}
+                                className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${chartMetric === 'hours' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                            >
+                                Em Horas
+                            </button>
+                            <button 
+                                onClick={() => setChartMetric('professionals')}
+                                className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${chartMetric === 'professionals' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                            >
+                                Nº Profissionais
+                            </button>
+                        </div>
+                        <div className="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded border flex items-center gap-1">
+                            <Filter size={14} />
+                            Filtros aplicados ao gráfico
+                        </div>
                     </div>
                 </div>
 
-                <div className="h-[400px] w-full min-w-0 min-h-0">
+                <div className="h-[400px] w-full min-h-[300px]">
                     <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb"/>
@@ -540,14 +575,14 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
                             <Legend wrapperStyle={{paddingTop: '20px'}}/>
                             
                             {/* Render a Bar for each Role */}
-                            {Object.keys(ROLE_COLORS).map((role) => (
+                            {Object.keys(professionalCategories).map((role) => (
                                 (roleFilter === 'Todos' || roleFilter === role) && (
                                     <Bar 
                                         key={role} 
                                         dataKey={role} 
                                         name={role}
                                         stackId="a"
-                                        fill={ROLE_COLORS[role]} 
+                                        fill={professionalCategories[role] || '#000000'}
                                         radius={[0, 0, 0, 0]}
                                         onClick={(data) => handleBarClick(data, role)}
                                         cursor="pointer"
@@ -559,55 +594,153 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
                 </div>
             </div>
 
-            {/* Modal for Staff List */}
-            {showStaffList && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowStaffList(false)}>
+            {/* Global Modal for List Displays */}
+            {(activeModal) && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => { setActiveModal(null); setShowStaffList(false); setShowPendencies(false); }}>
                     <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
-                        <div className="bg-gray-50 p-4 border-b flex justify-between items-center">
+                        <div className={`p-4 border-b flex justify-between items-center ${activeModal === 'pendencies' ? 'bg-red-50 border-red-100' : 'bg-gray-50'}`}>
                             <div>
-                                <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">
-                                    <Users size={20} className="text-gdf-primary"/>
-                                    Servidores Filtrados
+                                <h3 className={`font-bold text-lg flex items-center gap-2 ${activeModal === 'pendencies' ? 'text-red-800' : 'text-gray-800'}`}>
+                                    {activeModal === 'pendencies' ? <AlertTriangle size={20} className="text-red-600"/> : <Users size={20} className="text-gdf-primary"/>}
+                                    {activeModal === 'staff'  && 'Servidores Filtrados'}
+                                    {activeModal === 'tpd' && 'Detalhamento de TPDs'}
+                                    {activeModal === 'absences' && 'Detalhamento de Afastamentos'}
+                                    {activeModal === 'pendencies' && 'Pendências de Carga Horária Mensal'}
                                 </h3>
-                                <p className="text-sm text-gray-500">Com base nos filtros de Mês, Cargo e Período</p>
+                                <p className={`text-sm ${activeModal === 'pendencies' ? 'text-red-600' : 'text-gray-500'}`}>
+                                    {activeModal === 'staff' && 'Com base nos filtros de Mês, Cargo e Período'}
+                                    {activeModal === 'tpd' && 'Servidores com registros de Legenda Especial / TPD no mês'}
+                                    {activeModal === 'absences' && 'Servidores com registros de Afastamentos no mês'}
+                                    {activeModal === 'pendencies' && 'Diferença entre a carga mensal esperada e a alocada no mês atual'}
+                                </p>
                             </div>
-                            <button onClick={() => setShowStaffList(false)} className="text-gray-400 hover:text-red-500">
+                            <button onClick={() => { setActiveModal(null); setShowStaffList(false); setShowPendencies(false); }} className={`text-gray-400 hover:text-red-500 ${activeModal === 'pendencies' ? 'text-red-400 hover:text-red-600' : ''}`}>
                                 <X size={24}/>
                             </button>
                         </div>
                         <div className="p-4 max-h-[60vh] overflow-y-auto">
-                            {filteredEmployees.length > 0 ? (
+                            {activeModal === 'staff' ? (
+                                filteredEmployees.length > 0 ? (
+                                    <div className="space-y-4">
+                                        {filteredEmployees.map(emp => {
+                                            const empAssignments = filteredAssignments.filter(a => a.employeeId === emp.id);
+                                            const assignedHours = empAssignments.reduce((acc, curr) => acc + curr.duration, 0);
+                                            return (
+                                            <div key={emp.id} className="flex justify-between items-center p-3 bg-white border border-gray-100 rounded-lg shadow-sm hover:bg-gray-50 transition-colors">
+                                                <div className="flex items-center gap-4">
+                                                    <div className={`w-10 h-10 rounded-full ${emp.colorIdentifier} flex items-center justify-center text-white text-sm font-bold`}>
+                                                        {emp.name.charAt(0)}
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-semibold text-gray-800">{emp.name}</p>
+                                                        <p className="text-xs text-gray-500">Mat: {emp.matricula} • {emp.role}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="flex flex-col gap-1 items-end">
+                                                        <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded font-medium">
+                                                            Contrato: {emp.contractHours}h/sem
+                                                        </span>
+                                                        <span className="inline-block bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-medium">
+                                                            Alocado: {assignedHours}h
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )})}
+                                    </div>
+                                ) : (
+                                    <p className="text-center text-gray-500 py-8">Nenhum servidor encontrado com estes filtros.</p>
+                                )
+                            ) : activeModal === 'pendencies' ? (
+                                pendencies.length > 0 ? (
+                                    <div className="space-y-3">
+                                        {pendencies.map((p, idx) => (
+                                            <div key={idx} className="flex justify-between items-center p-3 bg-white border border-gray-200 rounded-lg shadow-sm">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-10 h-10 rounded-full ${p.employee.colorIdentifier} flex items-center justify-center text-white text-sm font-bold`}>
+                                                        {p.employee.name.charAt(0)}
+                                                    </div>
+                                                    <div>
+                                                        <span className="font-semibold text-gray-800 block">{p.employee.name}</span>
+                                                        <span className="text-xs text-gray-500">{p.employee.role}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-4">
+                                                    <div className="text-right hidden sm:block">
+                                                        <p className="text-xs text-gray-500">Contrato Mensal</p>
+                                                        <p className="font-semibold">{p.contract}h</p>
+                                                    </div>
+                                                    <div className="text-right hidden sm:block">
+                                                        <p className="text-xs text-gray-500">Alocado</p>
+                                                        <p className="font-semibold">{p.assigned}h</p>
+                                                    </div>
+                                                    <div className={`text-right px-3 py-1 rounded ${p.diff > 0 ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                                        <p className="text-xs font-bold">{p.diff > 0 ? 'Faltam' : 'Excedem'}</p>
+                                                        <p className="font-bold">{Math.abs(p.diff)}h</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-center text-gray-500 py-8">Nenhuma pendência encontrada. Todos os servidores estão com a carga horária correta no mês.</p>
+                                )
+                            ) : activeModal === 'tpd' ? (
                                 <div className="space-y-4">
-                                    {filteredEmployees.map(emp => {
-                                        const empAssignments = filteredAssignments.filter(a => a.employeeId === emp.id);
-                                        const assignedHours = empAssignments.reduce((acc, curr) => acc + curr.duration, 0);
-                                        return (
-                                        <div key={emp.id} className="flex justify-between items-center p-3 bg-white border border-gray-100 rounded-lg shadow-sm hover:bg-gray-50 transition-colors">
-                                            <div className="flex items-center gap-4">
-                                                <div className={`w-10 h-10 rounded-full ${emp.colorIdentifier} flex items-center justify-center text-white text-sm font-bold`}>
-                                                    {emp.name.charAt(0)}
+                                    {Array.from(new Set(assignments.filter(a => monthDateStrings.has(a.date) && (a.category || shiftDefs[a.shiftCode]?.category) === 'Legenda Especial').map(a => a.employeeId)))
+                                        .map(empId => employees.find(e => e.id === empId))
+                                        .filter(Boolean)
+                                        .map(emp => {
+                                            const tpds = assignments.filter(a => a.employeeId === emp!.id && monthDateStrings.has(a.date) && (a.category || shiftDefs[a.shiftCode]?.category) === 'Legenda Especial');
+                                            const hours = tpds.reduce((sum, a) => sum + a.duration, 0);
+                                            return (
+                                                <div key={emp!.id} className="flex justify-between items-center p-3 bg-white border border-gray-100 rounded-lg shadow-sm">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={`w-10 h-10 rounded-full ${emp!.colorIdentifier} flex items-center justify-center text-white text-sm font-bold`}>
+                                                            {emp!.name.charAt(0)}
+                                                        </div>
+                                                        <div>
+                                                            <p className="font-semibold text-gray-800">{emp!.name}</p>
+                                                            <p className="text-xs text-gray-500">{emp!.role}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-lg font-bold text-yellow-600">{hours}h</p>
+                                                        <p className="text-[10px] text-gray-400 font-bold uppercase">{tpds.length} registros</p>
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <p className="font-semibold text-gray-800">{emp.name}</p>
-                                                    <p className="text-xs text-gray-500">Mat: {emp.matricula} • {emp.role}</p>
-                                                </div>
-                                            </div>
-                                            <div className="text-right">
-                                                <div className="flex flex-col gap-1 items-end">
-                                                    <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded font-medium">
-                                                        Contrato: {emp.contractHours}h/sem
-                                                    </span>
-                                                    <span className="inline-block bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-medium">
-                                                        Alocado: {assignedHours}h
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )})}
+                                            );
+                                        })}
                                 </div>
-                            ) : (
-                                <p className="text-center text-gray-500 py-8">Nenhum servidor encontrado com estes filtros.</p>
-                            )}
+                            ) : activeModal === 'absences' ? (
+                                <div className="space-y-4">
+                                    {Array.from(new Set(assignments.filter(a => monthDateStrings.has(a.date) && (a.category || shiftDefs[a.shiftCode]?.category) === 'Afastamento').map(a => a.employeeId)))
+                                        .map(empId => employees.find(e => e.id === empId))
+                                        .filter(Boolean)
+                                        .map(emp => {
+                                            const abs = assignments.filter(a => a.employeeId === emp!.id && monthDateStrings.has(a.date) && (a.category || shiftDefs[a.shiftCode]?.category) === 'Afastamento');
+                                            const hours = abs.reduce((sum, a) => sum + a.duration, 0);
+                                            return (
+                                                <div key={emp!.id} className="flex justify-between items-center p-3 bg-white border border-gray-100 rounded-lg shadow-sm">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={`w-10 h-10 rounded-full ${emp!.colorIdentifier} flex items-center justify-center text-white text-sm font-bold`}>
+                                                            {emp!.name.charAt(0)}
+                                                        </div>
+                                                        <div>
+                                                            <p className="font-semibold text-gray-800">{emp!.name}</p>
+                                                            <p className="text-xs text-gray-500">{emp!.role}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-lg font-bold text-purple-600">{hours}h</p>
+                                                        <p className="text-[10px] text-gray-400 font-bold uppercase">{abs.length} dias</p>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                </div>
+                            ) : null}
                         </div>
                     </div>
                 </div>

@@ -11,7 +11,9 @@ export const RulesService = {
             .filter(a => {
                 if (a.shiftCode === 'BLK' || a.employeeId !== employeeId) return false;
                 const def = shiftDefs ? shiftDefs[a.shiftCode] : null;
+                // Don't count Afastamento or any TPD (Extra hour) towards contractual duration
                 if (def && def.category === 'Afastamento') return false;
+                if (def && def.code.startsWith('TPD')) return false;
                 return true;
             })
             .reduce((sum, a) => sum + a.duration, 0);
@@ -47,7 +49,9 @@ export const RulesService = {
             .filter(a => {
                 if (a.employeeId !== employeeId || a.shiftCode === 'BLK') return false;
                 const def = shiftDefs ? shiftDefs[a.shiftCode] : null;
+                // Don't count Afastamento or any TPD (Extra hour) towards contractual duration
                 if (def && def.category === 'Afastamento') return false;
+                if (def && def.code.startsWith('TPD')) return false;
                 return a.date >= startStr && a.date <= endStr;
             })
             .reduce((sum, a) => sum + a.duration, 0);
@@ -81,6 +85,7 @@ export const RulesService = {
             employeeId,
             date,
             shiftCode: shiftDef.code,
+            category: shiftDef.category,
             duration: shiftDef.hours,
             isManualLock
         };
@@ -93,7 +98,9 @@ export const RulesService = {
             case 'Noite': return 'bg-indigo-100 text-indigo-800 border-indigo-300';
             case 'Afastamento': return 'bg-gray-200 text-gray-600 border-gray-400';
             case 'Bloqueio': return 'bg-red-100 text-red-500 font-bold border-red-200';
-            case 'Legenda Especial': return 'bg-pink-100 text-pink-800 border-pink-300';
+            case 'Legenda Especial': 
+                 if (code && code.startsWith('TPD')) return 'bg-green-100 text-green-800 border-green-300';
+                 return 'bg-pink-100 text-pink-800 border-pink-300';
             case 'Banco de Horas': 
                  if (code && (code.includes('-') || code.includes('NEG'))) return 'bg-orange-100 text-orange-800 border-orange-300';
                  return 'bg-blue-100 text-blue-800 border-blue-300';

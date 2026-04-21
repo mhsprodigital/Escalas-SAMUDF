@@ -57,6 +57,8 @@ const StaffForm: React.FC<StaffFormProps> = ({ onSave, onCancel, initialData }) 
                 }
             }
             setFormData(prev => ({ ...prev, [name]: masked }));
+        } else if (name === 'name') {
+             setFormData(prev => ({ ...prev, [name]: value.toUpperCase() }));
         } else {
             setFormData(prev => ({ ...prev, [name]: value }));
         }

@@ -17,6 +17,7 @@ interface ActiveCell {
     empId: string;
     dateStr: string;
     empName: string;
+    seiProcess?: string;
 }
 
 interface WeekSegment {
@@ -44,7 +45,8 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
         employeeId: '',
         startDate: '',
         endDate: '',
-        shiftCode: ''
+        shiftCode: '',
+        seiProcess: ''
     });
     
     // Month and Year Filters
@@ -177,13 +179,13 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
     // --- Actions ---
     const handleCellClick = (empId: string, dateStr: string, empName: string) => {
         if (!canEdit) return;
-        setActiveCell({ empId, dateStr, empName });
+        setActiveCell({ empId, dateStr, empName, seiProcess: '' });
         setShiftSearch('');
     };
 
     const handleAddShift = (code: string) => {
         if (!activeCell) return;
-        const { empId, dateStr } = activeCell;
+        const { empId, dateStr, seiProcess } = activeCell;
 
         incrementUsage(code); // Track usage
 
@@ -202,6 +204,9 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
             const def = shiftDefs[code];
             if (def) {
                 const newAssignment = RulesService.createAssignment(empId, dateStr, def);
+                if (seiProcess) {
+                    newAssignment.seiProcess = seiProcess;
+                }
                 updatedAssignments.push(newAssignment);
             }
         }
@@ -284,7 +289,11 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
             // Check if already has assignment on this day (optional, we can just add)
             const existing = newAssignments.find(a => a.employeeId === batchForm.employeeId && a.date === dateStr && a.shiftCode === batchForm.shiftCode);
             if (!existing) {
-                newAssignments.push(RulesService.createAssignment(batchForm.employeeId, dateStr, def, false));
+                const newAssignment = RulesService.createAssignment(batchForm.employeeId, dateStr, def, false);
+                if (batchForm.seiProcess) {
+                    newAssignment.seiProcess = batchForm.seiProcess;
+                }
+                newAssignments.push(newAssignment);
             }
 
             current.setDate(current.getDate() + 1);
@@ -332,20 +341,27 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
                 <div className="flex flex-wrap gap-2">
                     {cellAssignments.map(a => {
                          const def = shiftDefs[a.shiftCode];
-                         return (
-                            <div key={a.id} className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-full border border-blue-200 shadow-sm">
-                                <span className={`text-xs font-bold ${a.isManualLock ? 'text-red-500' : 'text-gray-700'}`}>
-                                    {a.isManualLock ? 'BLOQUEIO' : a.shiftCode}
-                                </span>
-                                {!a.isManualLock && <span className="text-[10px] text-gray-500">({a.duration}h)</span>}
-                                <button 
-                                    onClick={() => handleRemoveAssignment(a.id)}
-                                    className="text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full p-0.5"
-                                >
-                                    <X size={14}/>
-                                </button>
+                        return (
+                            <div key={a.id} className="flex flex-col bg-white rounded-lg border border-blue-200 shadow-sm overflow-hidden">
+                                <div className="flex items-center gap-2 px-3 py-1.5">
+                                    <span className={`text-xs font-bold ${a.isManualLock ? 'text-red-500' : 'text-gray-700'}`}>
+                                        {a.isManualLock ? 'BLOQUEIO' : a.shiftCode}
+                                    </span>
+                                    {!a.isManualLock && <span className="text-[10px] text-gray-500">({a.duration}h)</span>}
+                                    <button 
+                                        onClick={() => handleRemoveAssignment(a.id)}
+                                        className="ml-auto text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full p-0.5"
+                                    >
+                                        <X size={14}/>
+                                    </button>
+                                </div>
+                                {a.seiProcess && (
+                                    <div className="bg-blue-50 px-3 py-1 text-[10px] text-blue-700 border-t border-blue-100 flex items-center justify-between">
+                                        <span className="font-semibold">SEI:</span> {a.seiProcess}
+                                    </div>
+                                )}
                             </div>
-                         );
+                        );
                     })}
                 </div>
             </div>
@@ -373,7 +389,7 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
 
                         {renderActiveCellAssignments()}
                         
-                        <div className="p-4 border-b">
+                        <div className="p-4 border-b space-y-3">
                             <div className="relative">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                                 <input 
@@ -383,6 +399,16 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
                                     className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gdf-primary focus:outline-none text-lg"
                                     value={shiftSearch}
                                     onChange={(e) => setShiftSearch(e.target.value)}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-700 mb-1">Processo SEI (Opcional - Ex: banco, licença)</label>
+                                <input 
+                                    type="text" 
+                                    placeholder="Ex: 00060-00012345/2023-11"
+                                    className="w-full border-gray-300 rounded-md shadow-sm focus:ring-gdf-primary focus:border-gdf-primary p-2 border bg-white text-sm"
+                                    value={activeCell.seiProcess || ''}
+                                    onChange={(e) => setActiveCell({...activeCell, seiProcess: e.target.value})}
                                 />
                             </div>
                         </div>
@@ -523,6 +549,16 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
                                     }
                                 </select>
                             </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-1">Processo SEI (Opcional)</label>
+                                <input 
+                                    type="text" 
+                                    placeholder="Ex: 00060-00012345/2023-11"
+                                    className="w-full border-gray-300 rounded-md shadow-sm focus:ring-gdf-primary focus:border-gdf-primary p-2 border bg-white"
+                                    value={batchForm.seiProcess}
+                                    onChange={e => setBatchForm({...batchForm, seiProcess: e.target.value})}
+                                />
+                            </div>
                         </div>
 
                         <div className="bg-gray-50 p-4 border-t flex justify-end gap-2">
@@ -657,21 +693,49 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
                                                                 <Lock size={14}/>
                                                             </div>
                                                         ) : (
-                                                            cellAssignments.map((assignment, idx) => {
-                                                                const def = shiftDefs[assignment.shiftCode];
-                                                                const chipColor = def ? RulesService.getShiftColor(def.category, def.code) : 'bg-gray-200';
-                                                                
-                                                                // FIXED HEIGHT CHIP for consistent visual weight
-                                                                return (
-                                                                    <div 
-                                                                        key={idx} 
-                                                                        className={`h-5 w-full rounded flex items-center justify-center text-[9px] font-bold leading-none border shadow-sm ${chipColor} flex-none`}
-                                                                        title={def?.label}
-                                                                    >
-                                                                        {assignment.shiftCode}
-                                                                    </div>
-                                                                )
-                                                            })
+                                                            (() => {
+                                                                const sortedAssignments = [...cellAssignments].sort((a, b) => {
+                                                                    const categoryWeight: Record<string, number> = {
+                                                                        'Manhã': 1,
+                                                                        'Tarde': 2,
+                                                                        'Noite': 3,
+                                                                        'Bloqueio': 4,
+                                                                        'Banco de Horas': 5,
+                                                                        'Legenda Especial': 6,
+                                                                        'Afastamento': 7
+                                                                    };
+                                                                    
+                                                                    const defA = shiftDefs[a.shiftCode];
+                                                                    const defB = shiftDefs[b.shiftCode];
+                                                                    
+                                                                    const weightA = defA ? (categoryWeight[defA.category] || 99) : 99;
+                                                                    const weightB = defB ? (categoryWeight[defB.category] || 99) : 99;
+                                                                    
+                                                                    return weightA - weightB;
+                                                                });
+
+                                                                return sortedAssignments.map((assignment, idx) => {
+                                                                    const def = shiftDefs[assignment.shiftCode];
+                                                                    const chipColor = def ? RulesService.getShiftColor(def.category, def.code) : 'bg-gray-200';
+                                                                    
+                                                                    // FIXED HEIGHT CHIP for consistent visual weight, but allow multiline if shiftCode has spaces
+                                                                    const shiftParts = assignment.shiftCode.split(' ');
+                                                                    return (
+                                                                        <div 
+                                                                            key={idx} 
+                                                                            className={`min-h-[20px] w-full py-0.5 px-0.5 rounded flex flex-col items-center justify-center text-[9px] font-bold leading-[1.1] border shadow-sm ${chipColor} flex-none relative`}
+                                                                            title={`${def?.label}${assignment.seiProcess ? ` - SEI: ${assignment.seiProcess}` : ''}`}
+                                                                        >
+                                                                            {shiftParts.map((part, pIdx) => (
+                                                                                <span key={pIdx} className="block">{part}</span>
+                                                                            ))}
+                                                                            {assignment.seiProcess && (
+                                                                                <div className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full border border-white" title={`SEI: ${assignment.seiProcess}`}></div>
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                });
+                                                            })()
                                                         )}
                                                     </div>
 
