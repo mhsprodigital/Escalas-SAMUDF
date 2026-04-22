@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Users, Settings as SettingsIcon, BookOpen, Menu, Plus, Calendar, LayoutDashboard } from 'lucide-react';
-import { subscribeToEmployees, subscribeToAssignments, subscribeToSettings, subscribeToVehicles, subscribeToSectors, saveAssignments, saveEmployee, deleteEmployee, deleteAssignment, syncDefaultSettings, getSystemUserByEmail } from './services/storageService';
+import { subscribeToEmployees, subscribeToAssignments, subscribeToSettings, subscribeToVehicles, subscribeToSectors, saveAssignments, saveEmployee, deleteEmployee, deleteAssignment, syncDefaultSettings, getSystemUserByEmail, saveSettings } from './services/storageService';
 import { Employee, ShiftAssignment, Vehicle, Sector, UserRole } from './types';
 import StaffForm from './components/StaffForm';
 import ScaleGrid from './components/ScaleGrid';
@@ -90,6 +90,9 @@ const App: React.FC = () => {
 
     const isAdmin = userRole === 'ADMIN';
     const canEdit = userRole === 'ADMIN' || userRole === 'EDITOR';
+    
+    // Sidebar state
+    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
     useEffect(() => {
         if (!user) return;
@@ -323,6 +326,7 @@ const App: React.FC = () => {
                         onSave={handleSaveEmployee} 
                         onCancel={() => setView(ViewState.STAFF_LIST)} 
                         initialData={editingEmployee}
+                        professionalCategories={professionalCategories}
                     />
                 );
 
@@ -336,6 +340,7 @@ const App: React.FC = () => {
                         startDate={currentWeekStart}
                         shiftDefs={settings.shiftDefs}
                         canEdit={canEdit}
+                        professionalCategories={professionalCategories}
                     />
                 );
             
@@ -384,103 +389,128 @@ const App: React.FC = () => {
     return (
         <div className="min-h-screen flex bg-gray-100 font-sans">
             {/* Sidebar */}
-            <aside className="w-64 bg-gdf-dark text-white hidden md:flex flex-col flex-shrink-0 transition-all duration-300 shadow-xl z-20">
+            <aside className={`${isSidebarOpen ? 'w-64' : 'w-20'} bg-gdf-dark text-white hidden md:flex flex-col flex-shrink-0 transition-all duration-300 shadow-xl z-20 overflow-hidden`}>
                 <div className="h-16 flex items-center justify-center border-b border-gray-700 bg-gdf-primary shadow-inner">
-                    <span className="font-bold text-xl tracking-wider flex items-center gap-2">
-                        SIS-ESCALA <span className="text-xs bg-white text-gdf-primary px-1 rounded">GDF</span>
-                    </span>
+                    {isSidebarOpen ? (
+                        <span className="font-bold text-xl tracking-wider flex items-center gap-2 whitespace-nowrap">
+                            SIS-ESCALA <span className="text-xs bg-white text-gdf-primary px-1 rounded">GDF</span>
+                        </span>
+                    ) : (
+                        <span className="font-bold text-xl tracking-wider flex items-center justify-center">
+                            S<span className="text-xs bg-white text-gdf-primary px-1 rounded ml-1">GDF</span>
+                        </span>
+                    )}
                 </div>
                 
-                <nav className="flex-1 px-3 py-6 space-y-1">
+                <nav className="flex-1 px-3 py-6 space-y-1 overflow-y-auto overflow-x-hidden">
                     
                     <button 
                          onClick={() => setView(ViewState.DASHBOARD)}
-                         className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.DASHBOARD ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'}`}
+                         className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.DASHBOARD ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'} ${!isSidebarOpen && 'justify-center translate-x-0 px-0'}`}
+                         title={!isSidebarOpen ? "Dashboard" : ""}
                     >
-                        <LayoutDashboard className={`mr-3 ${view === ViewState.DASHBOARD ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
-                        Dashboard
+                        <LayoutDashboard className={`${isSidebarOpen ? 'mr-3' : ''} ${view === ViewState.DASHBOARD ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
+                        {isSidebarOpen && <span className="whitespace-nowrap">Dashboard</span>}
                     </button>
 
                     <button 
                         onClick={() => setView(ViewState.SCALE)}
-                        className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.SCALE ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'}`}
+                        className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.SCALE ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'} ${!isSidebarOpen && 'justify-center translate-x-0 px-0'}`}
+                        title={!isSidebarOpen ? "Escala Mensal" : ""}
                     >
-                        <Calendar className={`mr-3 ${view === ViewState.SCALE ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
-                        Escala Mensal
+                        <Calendar className={`${isSidebarOpen ? 'mr-3' : ''} ${view === ViewState.SCALE ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
+                        {isSidebarOpen && <span className="whitespace-nowrap">Escala Mensal</span>}
                     </button>
 
                     {canEdit && (
                         <button 
                             onClick={() => setView(ViewState.STAFF_LIST)}
-                            className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.STAFF_LIST || view === ViewState.STAFF_FORM ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'}`}
+                            className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.STAFF_LIST || view === ViewState.STAFF_FORM ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'} ${!isSidebarOpen && 'justify-center translate-x-0 px-0'}`}
+                            title={!isSidebarOpen ? "Servidores" : ""}
                         >
-                            <Users className={`mr-3 ${view === ViewState.STAFF_LIST || view === ViewState.STAFF_FORM ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
-                            Servidores
+                            <Users className={`${isSidebarOpen ? 'mr-3' : ''} ${view === ViewState.STAFF_LIST || view === ViewState.STAFF_FORM ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
+                            {isSidebarOpen && <span className="whitespace-nowrap">Servidores</span>}
                         </button>
                     )}
 
                     {canEdit && (
                         <button 
                             onClick={() => setView(ViewState.REPORTS)}
-                            className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.REPORTS ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'}`}
+                            className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.REPORTS ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'} ${!isSidebarOpen && 'justify-center translate-x-0 px-0'}`}
+                            title={!isSidebarOpen ? "Relatórios" : ""}
                         >
-                            <FileText className={`mr-3 ${view === ViewState.REPORTS ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
-                            Relatórios
+                            <FileText className={`${isSidebarOpen ? 'mr-3' : ''} ${view === ViewState.REPORTS ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
+                            {isSidebarOpen && <span className="whitespace-nowrap">Relatórios</span>}
                         </button>
                     )}
 
                     {isAdmin && (
                         <button 
                             onClick={() => setView(ViewState.RULES)}
-                            className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.RULES ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'}`}
+                            className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.RULES ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'} ${!isSidebarOpen && 'justify-center translate-x-0 px-0'}`}
+                            title={!isSidebarOpen ? "Regras & Portarias" : ""}
                         >
-                            <BookOpen className={`mr-3 ${view === ViewState.RULES ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
-                            Regras & Portarias
+                            <BookOpen className={`${isSidebarOpen ? 'mr-3' : ''} ${view === ViewState.RULES ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
+                            {isSidebarOpen && <span className="whitespace-nowrap">Regras & Portarias</span>}
                         </button>
                     )}
 
-                    <div className="pt-4 mt-4 border-t border-gray-700">
+                    <div className={`pt-4 mt-4 border-t border-gray-700 ${!isSidebarOpen && 'mx-2'}`}>
                         {canEdit && (
                             <button 
                                 onClick={() => setView(ViewState.DOSSIER)}
-                                className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.DOSSIER ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'}`}
+                                className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.DOSSIER ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'} ${!isSidebarOpen && 'justify-center translate-x-0 px-0'}`}
+                                title={!isSidebarOpen ? "Dossiê do Servidor" : ""}
                             >
-                                <FileDigit className={`mr-3 ${view === ViewState.DOSSIER ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
-                                Dossiê do Servidor
+                                <FileDigit className={`${isSidebarOpen ? 'mr-3' : ''} ${view === ViewState.DOSSIER ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
+                                {isSidebarOpen && <span className="whitespace-nowrap">Dossiê do Servidor</span>}
                             </button>
                         )}
                         {isAdmin && (
                             <button 
                                 onClick={() => setView(ViewState.ACCESS_MANAGEMENT)}
-                                className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.ACCESS_MANAGEMENT ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'}`}
+                                className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.ACCESS_MANAGEMENT ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'} ${!isSidebarOpen && 'justify-center translate-x-0 px-0'}`}
+                                title={!isSidebarOpen ? "Gestão de Acessos" : ""}
                             >
-                                <ShieldCheck className={`mr-3 ${view === ViewState.ACCESS_MANAGEMENT ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
-                                Gestão de Acessos
+                                <ShieldCheck className={`${isSidebarOpen ? 'mr-3' : ''} ${view === ViewState.ACCESS_MANAGEMENT ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
+                                {isSidebarOpen && <span className="whitespace-nowrap">Gestão de Acessos</span>}
                             </button>
                         )}
                         {isAdmin && (
                             <button 
                                 onClick={() => setView(ViewState.SETTINGS)}
-                                className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.SETTINGS ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'}`}
+                                className={`flex items-center w-full px-4 py-3 rounded-lg transition-all duration-200 group ${view === ViewState.SETTINGS ? 'bg-gray-700 text-gdf-accent shadow-lg translate-x-1' : 'hover:bg-gray-700 hover:text-white'} ${!isSidebarOpen && 'justify-center translate-x-0 px-0'}`}
+                                title={!isSidebarOpen ? "Configurações" : ""}
                             >
-                                <SettingsIcon className={`mr-3 ${view === ViewState.SETTINGS ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
-                                Configurações
+                                <SettingsIcon className={`${isSidebarOpen ? 'mr-3' : ''} ${view === ViewState.SETTINGS ? 'text-gdf-accent' : 'text-gray-400 group-hover:text-white'}`} size={20} />
+                                {isSidebarOpen && <span className="whitespace-nowrap">Configurações</span>}
                             </button>
                         )}
                     </div>
                 </nav>
 
                 <div className="p-4 border-t border-gray-700 text-xs text-gray-400 text-center">
-                    <p className="font-semibold">SES-DF / GDF</p>
-                    <p className="opacity-75">v1.3.0</p>
+                    {isSidebarOpen ? (
+                        <>
+                            <p className="font-semibold whitespace-nowrap">SES-DF / GDF</p>
+                            <p className="opacity-75">v1.3.0</p>
+                        </>
+                    ) : (
+                        <p className="font-semibold" title="SES-DF / GDF v1.3.0">v1.3</p>
+                    )}
                 </div>
             </aside>
 
             {/* Main Content */}
             <div className="flex-1 flex flex-col overflow-hidden relative">
-                <header className="bg-white shadow-sm h-16 flex items-center justify-between px-6 md:px-8 z-10">
-                    <div className="md:hidden">
-                        <Menu size={24} className="text-gray-600" />
+                <header className="bg-white shadow-sm h-16 flex items-center justify-between px-6 md:px-8 z-10 flex-shrink-0">
+                    <div className="flex items-center">
+                        <button 
+                            className="text-gray-600 hover:text-gdf-primary transition-colors p-2 rounded-lg hover:bg-gray-100"
+                            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                        >
+                            <Menu size={24} />
+                        </button>
                     </div>
                     <div className="flex-1 flex justify-end items-center gap-4">
                         <div className="text-right">
@@ -502,7 +532,7 @@ const App: React.FC = () => {
                     </div>
                 </header>
 
-                <main className="flex-1 overflow-auto p-6 md:p-8">
+                <main className="flex-1 overflow-hidden p-4 md:p-6 lg:p-8 relative">
                     {renderContent()}
                 </main>
             </div>

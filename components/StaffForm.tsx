@@ -8,9 +8,10 @@ interface StaffFormProps {
     onSave: (employee: Employee) => void;
     onCancel: () => void;
     initialData?: Employee | null;
+    professionalCategories: Record<string, string>;
 }
 
-const StaffForm: React.FC<StaffFormProps> = ({ onSave, onCancel, initialData }) => {
+const StaffForm: React.FC<StaffFormProps> = ({ onSave, onCancel, initialData, professionalCategories }) => {
     const [units, setUnits] = useState<UnitStructure[]>([]);
     const [availableHours, setAvailableHours] = useState<number[]>([]);
     
@@ -200,14 +201,10 @@ const StaffForm: React.FC<StaffFormProps> = ({ onSave, onCancel, initialData }) 
                                 onChange={handleChange}
                                 className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-gdf-primary focus:border-transparent transition-all shadow-sm cursor-pointer"
                             >
-                                <option value="Enfermeiro(a)">Enfermeiro(a)</option>
-                                <option value="Técnico(a) em Enfermagem">Técnico(a) em Enfermagem</option>
-                                <option value="Médico(a)">Médico(a)</option>
-                                <option value="Fisioterapeuta">Fisioterapeuta</option>
-                                <option value="Nutricionista">Nutricionista</option>
-                                <option value="Psicólogo(a)">Psicólogo(a)</option>
-                                <option value="Administrativo">Administrativo</option>
-                                <option value="Administrador">Administrador</option>
+                                <option value="" disabled>Selecione um cargo...</option>
+                                {Object.keys(professionalCategories).map((cat) => (
+                                    <option key={cat} value={cat}>{cat}</option>
+                                ))}
                             </select>
                         </div>
 

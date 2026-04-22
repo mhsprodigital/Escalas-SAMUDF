@@ -141,7 +141,13 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
 
     // 1. Calculate General Stats
     const totalStaff = filteredEmployees.length;
-    const totalHoursAssigned = filteredAssignments.reduce((acc, curr) => acc + curr.duration, 0);
+    const totalHoursAssigned = filteredAssignments.reduce((acc, curr) => {
+        let dur = curr.duration;
+        if (curr.shiftCode.includes('SM6 ST6') && (periodFilter === 'Manhã' || periodFilter === 'Tarde')) {
+            dur = 6;
+        }
+        return acc + dur;
+    }, 0);
     
     // Banco de Horas stats for the selected month
     const bankStats = useMemo(() => {
@@ -445,12 +451,6 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
                             <option value="Banco de Horas">Banco de Horas</option>
                         </select>
                     </div>
-                    <button
-                        onClick={() => setActiveModal('settings')}
-                        className="px-3 py-2 bg-gray-100 text-gray-700 rounded-md text-xs font-bold hover:bg-gray-200 border"
-                    >
-                        Categorias
-                    </button>
                 </div>
             </div>
             

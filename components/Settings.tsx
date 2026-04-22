@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { UnitStructure, ShiftAssignment, Employee, ShiftDefinition, Vehicle, Sector } from '../types';
-import { subscribeToSettings, saveSettings, getEmployees, getAssignments, subscribeToVehicles, subscribeToSectors, saveVehicle, deleteVehicle, saveSector, deleteSector } from '../services/storageService';
+import { subscribeToSettings, saveSettings, getEmployees, getAssignments, subscribeToVehicles, subscribeToSectors, saveVehicle, deleteVehicle, saveSector, deleteSector, saveEmployee } from '../services/storageService';
 import { Plus, Trash2, Layers, Briefcase, Clock, Download, Calendar, Truck, MapPin, Lock, Unlock } from 'lucide-react';
 
 interface SettingsData {
@@ -111,6 +111,21 @@ const Settings: React.FC<SettingsProps> = ({ canEdit, professionalCategories, se
         if (!newCatName.trim()) return;
         setProfessionalCategories({ ...professionalCategories, [newCatName]: '#000000' });
         setNewCatName('');
+    };
+
+    const deleteCategoryNoEmployees = (cat: string) => {
+        const newCats = { ...professionalCategories };
+        delete newCats[cat];
+        setProfessionalCategories(newCats);
+    };
+
+    const handleDeleteCategoryClick = (cat: string) => {
+        const affectedEmployees = employees.filter(e => e.role === cat);
+        if (affectedEmployees.length === 0) {
+            deleteCategoryNoEmployees(cat);
+        } else {
+            setCategoryToDelete(cat);
+        }
     };
 
     const confirmCategoryDeletion = () => {
@@ -437,7 +452,7 @@ const Settings: React.FC<SettingsProps> = ({ canEdit, professionalCategories, se
                             <input type="color" value={color} onChange={(e) => setProfessionalCategories({...professionalCategories, [cat]: e.target.value})} className="w-8 h-8 rounded" />
                             <span className="text-sm font-semibold flex-grow">{cat}</span>
                             {canEdit && (
-                                <button onClick={() => setCategoryToDelete(cat)} className="text-gray-400 hover:text-red-500">
+                                <button onClick={() => handleDeleteCategoryClick(cat)} className="text-gray-400 hover:text-red-500">
                                     <Trash2 size={16} />
                                 </button>
                             )}

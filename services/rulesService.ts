@@ -92,6 +92,10 @@ export const RulesService = {
     },
 
     getShiftColor(category: string, code?: string): string {
+        if (code === 'SM6 ST6') {
+            return 'bg-orange-100 text-orange-800 border-orange-400';
+        }
+        
         switch (category) {
             case 'Manhã': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
             case 'Tarde': return 'bg-blue-100 text-blue-800 border-blue-300';

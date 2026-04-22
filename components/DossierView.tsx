@@ -115,7 +115,7 @@ const DossierView: React.FC<DossierViewProps> = ({ employees, assignments, shift
                             <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
                                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                                        <UserSquare size={14} /> Detalhes Funcionais
+                                        <UserSquare size={14} /> Detalhes Funcionais e Contato
                                     </h3>
                                     <div className="space-y-2 text-sm">
                                         <div className="flex justify-between">
@@ -123,18 +123,53 @@ const DossierView: React.FC<DossierViewProps> = ({ employees, assignments, shift
                                             <span className="font-medium text-gray-900">{selectedEmployee.matricula || 'Não informada'}</span>
                                         </div>
                                         <div className="flex justify-between">
-                                            <span className="text-gray-500">Tipo de Vínculo:</span>
-                                            <span className="font-medium text-gray-900">{selectedEmployee.bond}</span>
+                                            <span className="text-gray-500">Registro Profissional:</span>
+                                            <span className="font-medium text-gray-900">{selectedEmployee.coren || 'Não informado'}</span>
                                         </div>
-                                        {selectedEmployee.bond === 'Temporário' && selectedEmployee.contractExpiry && (
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-500">CNES:</span>
+                                            <span className="font-medium text-gray-900">{selectedEmployee.cnes || 'Não informado'}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-500">Contato:</span>
+                                            <span className="font-medium text-gray-900">{selectedEmployee.contact || 'Não informado'}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-500">Tipo de Vínculo:</span>
+                                            <span className="font-medium text-gray-900">{selectedEmployee.bond || selectedEmployee.employmentType || 'Não informado'}</span>
+                                        </div>
+                                        {(selectedEmployee.bond === 'Temporário' || selectedEmployee.employmentType === 'Temporário') && selectedEmployee.contractExpiry && (
                                             <div className="flex justify-between">
                                                 <span className="text-gray-500">Término do Contrato:</span>
                                                 <span className="font-medium text-red-600">{new Date(selectedEmployee.contractExpiry).toLocaleDateString('pt-BR')}</span>
                                             </div>
                                         )}
                                         <div className="flex justify-between">
-                                            <span className="text-gray-500">Restrições:</span>
+                                            <span className="text-gray-500">Restrições Gerais:</span>
                                             <span className="font-medium text-gray-900">{selectedEmployee.restrictions || 'Nenhuma'}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+                                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                        <UserSquare size={14} /> Preferências e Restrições de Escala
+                                    </h3>
+                                    <div className="space-y-2 text-sm">
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-500">Redução de Carga Horária:</span>
+                                            <span className="font-medium text-gray-900">{selectedEmployee.preferences?.reducaoCarga > 0 ? `${selectedEmployee.preferences.reducaoCarga}h` : 'Não'}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-500">Período Preferencial:</span>
+                                            <span className="font-medium text-gray-900">{selectedEmployee.preferences?.periodoPreferencial || 'INDIFERENTE'}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-500">Preferência por Finais de Semana:</span>
+                                            <span className="font-medium text-gray-900">{selectedEmployee.preferences?.prefersWeekends ? 'Sim' : 'Não'}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-500">Tipo de Atuação:</span>
+                                            <span className="font-medium text-gray-900">{selectedEmployee.preferences?.tipoAtuacao || 'TOTAL'}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -181,7 +216,18 @@ const DossierView: React.FC<DossierViewProps> = ({ employees, assignments, shift
                                                                 {event.seiProcess ? (
                                                                     <div className="flex items-center gap-2 text-blue-600">
                                                                         <FileDigit size={16} />
-                                                                        {event.seiProcess}
+                                                                        <span>{event.seiProcess}</span>
+                                                                        <button 
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                navigator.clipboard.writeText(event.seiProcess!);
+                                                                                alert('SEI copiado!');
+                                                                            }} 
+                                                                            className="text-gray-400 hover:text-blue-600 transition-colors bg-white hover:bg-blue-50 border p-1 rounded"
+                                                                            title="Copiar SEI"
+                                                                        >
+                                                                            <FileText size={14} />
+                                                                        </button>
                                                                     </div>
                                                                 ) : (
                                                                     <span className="text-gray-300">-</span>

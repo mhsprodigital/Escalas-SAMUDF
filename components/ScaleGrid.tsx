@@ -11,6 +11,7 @@ interface ScaleGridProps {
     startDate: Date; 
     shiftDefs: Record<string, ShiftDefinition>;
     canEdit?: boolean;
+    professionalCategories?: Record<string, string>;
 }
 
 interface ActiveCell {
@@ -31,13 +32,30 @@ interface WeekSegment {
 const NOTES_KEY = 'sis_escala_weekly_notes';
 const USAGE_KEY = 'sis_escala_shift_usage';
 
-const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignmentChange, onAssignmentDelete, startDate, shiftDefs, canEdit = false }) => {
+const DebouncedInput: React.FC<{ value: string, onChange: (v: string) => void, placeholder?: string, className?: string }> = ({ value, onChange, placeholder, className }) => {
+    const [val, setVal] = useState(value);
+    useEffect(() => { setVal(value); }, [value]);
+    return (
+        <input 
+            type="text"
+            className={className}
+            placeholder={placeholder}
+            value={val}
+            onChange={e => setVal(e.target.value)}
+            onBlur={() => onChange(val)}
+        />
+    );
+};
+
+const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignmentChange, onAssignmentDelete, startDate, shiftDefs, canEdit = false, professionalCategories = {} }) => {
     const [currentDate, setCurrentDate] = useState(startDate);
     const [searchTerm, setSearchTerm] = useState('');
+    const [roleFilter, setRoleFilter] = useState('Todos');
     const [activeCell, setActiveCell] = useState<ActiveCell | null>(null);
     const [shiftSearch, setShiftSearch] = useState('');
     const [weeklyNotes, setWeeklyNotes] = useState<Record<string, string>>({});
     const [usageStats, setUsageStats] = useState<Record<string, number>>({});
+    const [periodInfo, setPeriodInfo] = useState<{ dateStr: string, period: 'Manhã'|'Tarde'|'Noite', employees: Employee[] } | null>(null);
     
     // Batch Event State
     const [showBatchModal, setShowBatchModal] = useState(false);
@@ -167,8 +185,9 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
 
     const filteredEmployees = employees.filter(emp => {
         const matchName = emp.name.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchRole = emp.role.toLowerCase().includes(searchTerm.toLowerCase());
-        return matchName || matchRole;
+        const matchTermRole = emp.role.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchRole = roleFilter === 'Todos' || emp.role === roleFilter;
+        return (matchName || matchTermRole) && matchRole;
     }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
     // --- Helpers ---
@@ -225,6 +244,52 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
             await Promise.all(toDelete.map(a => onAssignmentDelete(a.id)));
         }
     };
+
+    const handleOpenPeriodInfo = (dateStr: string, period: 'Manhã'|'Tarde'|'Noite') => {
+        const periodEmployees = filteredEmployees.filter(emp => {
+             const empAssignments = assignments.filter(a => a.employeeId === emp.id && a.date === dateStr);
+             return empAssignments.some(a => {
+                 const def = shiftDefs[a.shiftCode];
+                 const cat = a.category || def?.category;
+                 if (a.shiftCode.includes('SM6 ST6') && (period === 'Manhã' || period === 'Tarde')) return true;
+                 return cat === period;
+             });
+        });
+        setPeriodInfo({ dateStr, period, employees: periodEmployees });
+    };
+
+    const dailyStats = useMemo(() => {
+        const stats: Record<string, { manha: number, tarde: number, noite: number }> = {};
+        
+        daysInMonth.forEach(d => {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            const dateStr = `${y}-${m}-${day}`;
+            stats[dateStr] = { manha: 0, tarde: 0, noite: 0 };
+        });
+
+        assignments.forEach(a => {
+            const isEmployeeVisible = filteredEmployees.some(e => e.id === a.employeeId);
+            if (!isEmployeeVisible || !stats[a.date]) return;
+
+            const def = shiftDefs[a.shiftCode];
+            const cat = a.category || def?.category;
+
+            if (a.shiftCode.includes('SM6 ST6')) {
+                stats[a.date].manha += 1;
+                stats[a.date].tarde += 1;
+            } else if (cat === 'Manhã') {
+                stats[a.date].manha += 1;
+            } else if (cat === 'Tarde') {
+                stats[a.date].tarde += 1;
+            } else if (cat === 'Noite') {
+                stats[a.date].noite += 1;
+            }
+        });
+
+        return stats;
+    }, [assignments, filteredEmployees, daysInMonth, shiftDefs]);
 
     // --- Smart Lists Logic ---
     const topUsedShifts = useMemo(() => {
@@ -369,7 +434,7 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
     };
 
     return (
-        <div className="flex flex-col h-full space-y-4 relative">
+        <div className="flex flex-col h-[calc(100vh-140px)] space-y-4 relative">
             
             {/* SHIFT SELECTION MODAL */}
             {activeCell && (
@@ -403,12 +468,11 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
                             </div>
                             <div>
                                 <label className="block text-xs font-semibold text-gray-700 mb-1">Processo SEI (Opcional - Ex: banco, licença)</label>
-                                <input 
-                                    type="text" 
+                                <DebouncedInput 
                                     placeholder="Ex: 00060-00012345/2023-11"
                                     className="w-full border-gray-300 rounded-md shadow-sm focus:ring-gdf-primary focus:border-gdf-primary p-2 border bg-white text-sm"
                                     value={activeCell.seiProcess || ''}
-                                    onChange={(e) => setActiveCell({...activeCell, seiProcess: e.target.value})}
+                                    onChange={(val) => setActiveCell({...activeCell, seiProcess: val})}
                                 />
                             </div>
                         </div>
@@ -551,12 +615,11 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
                             </div>
                             <div>
                                 <label className="block text-sm font-semibold text-gray-700 mb-1">Processo SEI (Opcional)</label>
-                                <input 
-                                    type="text" 
+                                <DebouncedInput 
                                     placeholder="Ex: 00060-00012345/2023-11"
                                     className="w-full border-gray-300 rounded-md shadow-sm focus:ring-gdf-primary focus:border-gdf-primary p-2 border bg-white"
                                     value={batchForm.seiProcess}
-                                    onChange={e => setBatchForm({...batchForm, seiProcess: e.target.value})}
+                                    onChange={(val) => setBatchForm({...batchForm, seiProcess: val})}
                                 />
                             </div>
                         </div>
@@ -564,6 +627,41 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
                         <div className="bg-gray-50 p-4 border-t flex justify-end gap-2">
                             <button onClick={() => setShowBatchModal(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg transition">Cancelar</button>
                             <button onClick={handleBatchSubmit} className="px-4 py-2 bg-gdf-primary text-white hover:bg-blue-700 rounded-lg shadow-sm transition">Aplicar Evento</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* PERIOD INFO MODAL */}
+            {periodInfo && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setPeriodInfo(null)}>
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
+                        <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
+                            <div>
+                                <h3 className="font-bold text-gray-800 text-lg">
+                                    {periodInfo.employees.length} Servidor(es)
+                                </h3>
+                                <p className="text-sm text-gray-500 font-medium">
+                                    {new Date(periodInfo.dateStr + 'T12:00:00').toLocaleDateString('pt-BR')} - <span className="uppercase text-gdf-primary">{periodInfo.period}</span>
+                                </p>
+                            </div>
+                            <button onClick={() => setPeriodInfo(null)} className="text-gray-400 hover:text-red-500">
+                                <X size={24}/>
+                            </button>
+                        </div>
+                        <div className="overflow-y-auto p-4 flex-1">
+                            {periodInfo.employees.length === 0 ? (
+                                <p className="text-gray-500 text-center py-4">Nenhum servidor alocado neste período.</p>
+                            ) : (
+                                <ul className="space-y-2">
+                                    {periodInfo.employees.map(emp => (
+                                        <li key={emp.id} className="p-2 bg-gray-50 border border-gray-100 rounded flex justify-between items-center text-sm">
+                                            <span className="font-bold text-gray-700">{emp.name}</span>
+                                            <span className="text-xs text-gray-500">{emp.role}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -613,6 +711,18 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
                             ))}
                         </select>
                     </div>
+                    <div className="flex-1 lg:w-48">
+                        <select
+                            className="w-full border-gray-300 rounded-md shadow-sm focus:ring-gdf-primary focus:border-gdf-primary text-sm p-2 border bg-white"
+                            value={roleFilter}
+                            onChange={(e) => setRoleFilter(e.target.value)}
+                        >
+                            <option value="Todos">Todas Categorias</option>
+                            {Object.keys(professionalCategories).map((cat) => (
+                                <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                        </select>
+                    </div>
                     <div className="relative flex-1 lg:w-64">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                         <input 
@@ -631,21 +741,42 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
                 <table className="border-collapse w-full text-sm">
                     <thead className="bg-gray-100 sticky top-0 z-30 shadow-sm text-gray-600">
                         <tr>
-                            <th className="sticky left-0 bg-gray-100 z-40 border-r border-b border-gray-300 px-4 py-2 text-left min-w-[250px] font-bold text-xs uppercase">
+                            <th className="sticky left-0 top-0 bg-gray-200 z-[45] border-r border-b border-gray-300 px-4 py-2 text-left min-w-[250px] font-bold text-xs uppercase align-bottom text-gray-700">
                                 Servidor
                             </th>
-                            {daysInMonth.map((d, i) => (
-                                <th 
-                                    key={i} 
-                                    className={`border-b border-gray-300 min-w-[36px] px-1 py-2 text-center relative
-                                        ${isWeekend(d) ? 'bg-orange-50' : ''}
-                                        ${isSaturday(d) ? 'border-r-2 border-r-gray-400' : 'border-r'} 
-                                    `}
-                                >
-                                    <div className="text-[10px] font-bold">{d.toLocaleDateString('pt-BR', { weekday: 'narrow' })}</div>
-                                    <div className="text-xs">{d.getDate()}</div>
-                                </th>
-                            ))}
+                            {daysInMonth.map((d, i) => {
+                                const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                                const mNum = dailyStats[dateStr]?.manha || 0;
+                                const tNum = dailyStats[dateStr]?.tarde || 0;
+                                const nNum = dailyStats[dateStr]?.noite || 0;
+
+                                const getBg = (n: number) => n === 0 ? 'bg-red-100 text-red-700' : (n < 2 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700');
+
+                                return (
+                                    <th 
+                                        key={i} 
+                                        className={`border-b border-gray-300 min-w-[48px] w-[50px] max-w-[50px] p-0 align-bottom text-center relative bg-white
+                                            ${isSaturday(d) ? 'border-r-2 border-r-gray-400' : 'border-r'} 
+                                        `}
+                                    >
+                                        <div className={`pt-1 pb-1 border-b border-gray-200 ${isWeekend(d) ? 'bg-orange-50' : 'bg-gray-100'}`}>
+                                            <div className="text-[10px] font-bold text-gray-500">{d.toLocaleDateString('pt-BR', { weekday: 'narrow' })}</div>
+                                            <div className="text-xs font-bold text-gray-800">{d.getDate()}</div>
+                                        </div>
+                                        <div className="flex flex-col text-[10px]">
+                                            <div onClick={() => handleOpenPeriodInfo(dateStr, 'Manhã')} className={`flex justify-center items-center py-[2px] cursor-pointer hover:opacity-80 border-b border-white transition-opacity ${getBg(mNum)}`} title={`${mNum} funcionário(s) pela manhã`}>
+                                                <span className="font-bold mr-[1px]">{mNum}</span><span className="text-[8px] uppercase">M</span>
+                                            </div>
+                                            <div onClick={() => handleOpenPeriodInfo(dateStr, 'Tarde')} className={`flex justify-center items-center py-[2px] cursor-pointer hover:opacity-80 border-b border-white transition-opacity ${getBg(tNum)}`} title={`${tNum} funcionário(s) à tarde`}>
+                                                <span className="font-bold mr-[1px]">{tNum}</span><span className="text-[8px] uppercase">T</span>
+                                            </div>
+                                            <div onClick={() => handleOpenPeriodInfo(dateStr, 'Noite')} className={`flex justify-center items-center py-[2px] cursor-pointer hover:opacity-80 transition-opacity ${getBg(nNum)}`} title={`${nNum} funcionário(s) à noite`}>
+                                                <span className="font-bold mr-[1px]">{nNum}</span><span className="text-[8px] uppercase">N</span>
+                                            </div>
+                                        </div>
+                                    </th>
+                                );
+                            })}
                         </tr>
                     </thead>
                     <tbody>
