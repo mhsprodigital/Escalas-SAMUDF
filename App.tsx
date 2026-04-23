@@ -295,6 +295,7 @@ const App: React.FC = () => {
                                     <tr>
                                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Servidor</th>
                                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Cargo</th>
+                                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Vínculo</th>
                                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Restrições</th>
                                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Carga Horária</th>
                                         <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">{canEdit ? 'Ações' : ''}</th>
@@ -315,6 +316,11 @@ const App: React.FC = () => {
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{emp.role}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${emp.employmentType === 'Temporário' ? 'bg-orange-100 text-orange-700 border border-orange-200' : 'bg-green-100 text-green-700 border border-green-200'}`}>
+                                                    {emp.employmentType || 'Efetivo'}
+                                                </span>
+                                            </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                                                 {emp.preferences?.reducaoCarga > 0 && (
                                                     <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 mr-1">

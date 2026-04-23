@@ -728,6 +728,40 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
             )}
 
             {/* Header / Controls */}
+            {hasUnsavedChanges && (
+                <div className="sticky top-0 z-[60] bg-yellow-50 border-b border-yellow-200 p-3 flex justify-between items-center shadow-md animate-in slide-in-from-top duration-300">
+                    <div className="flex items-center gap-2">
+                        <div className="bg-yellow-400 p-1.5 rounded-full ring-4 ring-yellow-100">
+                            <AlertCircle size={18} className="text-white" />
+                        </div>
+                        <div>
+                            <span className="text-yellow-900 font-bold block leading-none">Alterações em Rascunho</span>
+                            <span className="text-yellow-700 text-xs text-opacity-80">Clique em salvar para consolidar no banco de dados.</span>
+                        </div>
+                    </div>
+                    <div className="flex gap-2">
+                        <button 
+                            onClick={handleDiscardChanges}
+                            className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-bold text-sm transition-all shadow-sm active:scale-95"
+                            disabled={isSaving}
+                        >
+                            Descartar
+                        </button>
+                        <button 
+                            onClick={handleSaveChanges}
+                            className="px-6 py-2 bg-gdf-primary text-white rounded-lg font-bold text-sm hover:bg-blue-700 transition-all flex items-center gap-2 shadow-lg active:scale-95 ring-offset-2 focus:ring-2 focus:ring-gdf-primary"
+                            disabled={isSaving}
+                        >
+                            {isSaving ? (
+                                <><div className="animate-spin w-4 h-4 border-2 border-white rounded-full border-t-transparent" /> Processando...</>
+                            ) : (
+                                <><Save size={18} /> Salvar Agora</>
+                            )}
+                        </button>
+                    </div>
+                </div>
+            )}
+
             <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 flex flex-col lg:flex-row justify-between items-center gap-4">
                 <div className="flex items-center gap-4">
                     <div className="flex items-center bg-gray-100 rounded-lg p-1">
@@ -810,7 +844,7 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
                                 const tNum = dailyStats[dateStr]?.tarde || 0;
                                 const nNum = dailyStats[dateStr]?.noite || 0;
 
-                                const getBg = (n: number) => n === 0 ? 'bg-red-100 text-red-700' : (n < 2 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700');
+                                const getBg = (n: number) => n <= 4 ? 'bg-red-100 text-red-700' : (n <= 6 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700');
 
                                 return (
                                     <th 
