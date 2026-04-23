@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Users, Settings as SettingsIcon, BookOpen, Menu, Plus, Calendar, LayoutDashboard } from 'lucide-react';
-import { subscribeToEmployees, subscribeToAssignments, subscribeToSettings, subscribeToVehicles, subscribeToSectors, saveAssignments, saveEmployee, deleteEmployee, deleteAssignment, syncDefaultSettings, getSystemUserByEmail, saveSettings } from './services/storageService';
+import { subscribeToEmployees, subscribeToAssignments, subscribeToSettings, subscribeToVehicles, subscribeToSectors, saveAssignmentsDiff, saveAssignments, saveEmployee, deleteEmployee, deleteAssignment, syncDefaultSettings, getSystemUserByEmail, saveSettings } from './services/storageService';
 import { Employee, ShiftAssignment, Vehicle, Sector, UserRole } from './types';
 import StaffForm from './components/StaffForm';
 import ScaleGrid from './components/ScaleGrid';
@@ -162,19 +162,60 @@ const App: React.FC = () => {
         setEmployeeToDelete(id);
     };
 
+    const [isDeleting, setIsDeleting] = useState(false);
+
     const confirmDeleteEmployee = async () => {
-        if (employeeToDelete) {
-            await deleteEmployee(employeeToDelete);
-            setEmployeeToDelete(null);
+        if (employeeToDelete && !isDeleting) {
+            setIsDeleting(true);
+            try {
+                await deleteEmployee(employeeToDelete);
+            } catch (error) {
+                console.error("Failed to delete", error);
+                alert("Falha ao deletar servidor. O banco pode ter atingido o limite de operações.");
+            } finally {
+                setEmployeeToDelete(null);
+                setIsDeleting(false);
+            }
         }
     };
 
-    const handleAssignmentsChange = async (newAssignments: ShiftAssignment[]) => {
-        await saveAssignments(newAssignments);
+    const handleAssignmentsChange = async (newAssignments: ShiftAssignment[]): Promise<boolean> => {
+        try {
+            const addedOrModified = newAssignments.filter(newA => {
+                const oldA = assignments.find(a => a.id === newA.id);
+                if (!oldA) return true;
+                return oldA.shiftCode !== newA.shiftCode || 
+                       oldA.date !== newA.date || 
+                       oldA.employeeId !== newA.employeeId ||
+                       oldA.duration !== newA.duration ||
+                       oldA.category !== newA.category ||
+                       oldA.seiProcess !== newA.seiProcess ||
+                       oldA.isManualLock !== newA.isManualLock;
+            });
+            const newIds = new Set(newAssignments.map(a => a.id));
+            const deletedIds = assignments
+                .filter(a => !newIds.has(a.id))
+                .map(a => a.id);
+            
+            if (addedOrModified.length > 0 || deletedIds.length > 0) {
+                console.log(`Saving changes: ${addedOrModified.length} added/modified, ${deletedIds.length} deleted.`);
+                await saveAssignmentsDiff(addedOrModified, deletedIds);
+            }
+            return true;
+        } catch (error) {
+            console.error(error);
+            alert("Não foi possível salvar a escala. Verifique sua conexão ou se o limite de uso diário (Quota) foi atingido.");
+            return false;
+        }
     };
 
     const handleAssignmentDelete = async (assignmentId: string) => {
-        await deleteAssignment(assignmentId);
+        try {
+            await deleteAssignment(assignmentId);
+        } catch (error) {
+            console.error(error);
+            alert("Não foi possível excluir a legenda. Verifique se o limite de uso diário (Quota) foi atingido.");
+        }
     };
 
     if (isAuthChecking) {

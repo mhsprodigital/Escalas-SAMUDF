@@ -5,7 +5,7 @@ import { subscribeToSettings } from '../services/storageService';
 import { Save, UserPlus, X, Briefcase, Clock, FileText, ShieldAlert, Moon, MapPin } from 'lucide-react';
 
 interface StaffFormProps {
-    onSave: (employee: Employee) => void;
+    onSave: (employee: Employee) => Promise<void> | void;
     onCancel: () => void;
     initialData?: Employee | null;
     professionalCategories: Record<string, string>;
@@ -14,6 +14,8 @@ interface StaffFormProps {
 const StaffForm: React.FC<StaffFormProps> = ({ onSave, onCancel, initialData, professionalCategories }) => {
     const [units, setUnits] = useState<UnitStructure[]>([]);
     const [availableHours, setAvailableHours] = useState<number[]>([]);
+    const [isSaving, setIsSaving] = useState(false);
+    const [formId] = useState<string>(initialData?.id || crypto.randomUUID());
     
     useEffect(() => {
         const unsub = subscribeToSettings((data) => {
@@ -71,31 +73,41 @@ const StaffForm: React.FC<StaffFormProps> = ({ onSave, onCancel, initialData, pr
         setPrefs(prev => ({ ...prev, [name]: val }));
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        const randomColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
+        if (isSaving) return;
+        setIsSaving(true);
         
-        const newEmployee: Employee = {
-            id: initialData?.id || crypto.randomUUID(),
-            name: formData.name || '',
-            matricula: formData.matricula || '',
-            coren: formData.coren || '',
-            role: formData.role || 'Enfermeiro(a)',
-            contractHours: Number(formData.contractHours),
-            unit: 'Instituição Padrão',
-            sector: 'Pronto Socorro Geral', 
-            cnes: formData.cnes || '',
-            contact: formData.contact || '',
-            restrictions: formData.restrictions || '',
-            colorIdentifier: initialData?.colorIdentifier || randomColor,
-            preferences: {
-                ...prefs,
-                reducaoCarga: Number(prefs.reducaoCarga)
-            },
-            employmentType: formData.employmentType as 'Efetivo' | 'Temporário',
-            contractExpiry: formData.employmentType === 'Temporário' ? (formData.contractExpiry || null) : null
-        };
-        onSave(newEmployee);
+        try {
+            const randomColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
+            
+            const newEmployee: Employee = {
+                id: formId,
+                name: formData.name || '',
+                matricula: formData.matricula || '',
+                coren: formData.coren || '',
+                role: formData.role || 'Enfermeiro(a)',
+                contractHours: Number(formData.contractHours),
+                unit: 'Instituição Padrão',
+                sector: 'Pronto Socorro Geral', 
+                cnes: formData.cnes || '',
+                contact: formData.contact || '',
+                restrictions: formData.restrictions || '',
+                colorIdentifier: initialData?.colorIdentifier || randomColor,
+                preferences: {
+                    ...prefs,
+                    reducaoCarga: Number(prefs.reducaoCarga)
+                },
+                employmentType: formData.employmentType as 'Efetivo' | 'Temporário',
+                contractExpiry: formData.employmentType === 'Temporário' ? (formData.contractExpiry || null) : null
+            };
+            await Promise.resolve(onSave(newEmployee));
+        } catch (error) {
+            console.error('Failed to save employee:', error);
+            alert('Falha ao salvar. Verifique sua conexão e limites do banco.');
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (
@@ -349,16 +361,18 @@ const StaffForm: React.FC<StaffFormProps> = ({ onSave, onCancel, initialData, pr
                     <button
                         type="button"
                         onClick={onCancel}
-                        className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium shadow-sm"
+                        disabled={isSaving}
+                        className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium shadow-sm disabled:opacity-50"
                     >
                         Cancelar
                     </button>
                     <button
                         type="submit"
-                        className="px-6 py-2.5 bg-gdf-primary text-white rounded-lg flex items-center gap-2 hover:bg-blue-700 transition-colors shadow-md font-medium"
+                        disabled={isSaving}
+                        className="px-6 py-2.5 bg-gdf-primary text-white rounded-lg flex items-center gap-2 hover:bg-blue-700 transition-colors shadow-md font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <Save size={18} />
-                        Salvar Servidor
+                        {isSaving ? 'Salvando...' : 'Salvar Servidor'}
                     </button>
                 </div>
             </form>

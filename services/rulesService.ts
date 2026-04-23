@@ -92,7 +92,7 @@ export const RulesService = {
     },
 
     getShiftColor(category: string, code?: string): string {
-        if (code === 'SM6 ST6') {
+        if (code === 'SM6 ST6' || code === 'ST6 SN12') {
             return 'bg-orange-100 text-orange-800 border-orange-400';
         }
         

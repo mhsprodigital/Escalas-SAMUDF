@@ -552,7 +552,7 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
                     </div>
                 </div>
 
-                <div className="h-[400px] w-full min-h-[300px]">
+                <div className="h-[400px] w-full min-h-[300px]" style={{ minWidth: 10, minHeight: 10 }}>
                     <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb"/>

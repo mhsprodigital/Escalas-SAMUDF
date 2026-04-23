@@ -76,16 +76,19 @@ const DailyReportView: React.FC<DailyReportViewProps> = ({ employees = [], assig
     }, [dailyAssignments, employees, shiftDefs]);
 
     const handleAllocationChange = (assignmentId: string, type: 'VEHICLE' | 'SECTOR' | 'NONE', targetId: string) => {
-        const assignment = assignments.find(a => a.id === assignmentId);
-        if (assignment) {
-            const updatedAssignment = { ...assignment };
-            if (type === 'NONE') {
-                delete updatedAssignment.allocation;
-            } else {
-                updatedAssignment.allocation = { type, id: targetId };
+        const updatedAssignments = assignments.map(a => {
+            if (a.id === assignmentId) {
+                const updated = { ...a };
+                if (type === 'NONE') {
+                    delete updated.allocation;
+                } else {
+                    updated.allocation = { type, id: targetId };
+                }
+                return updated;
             }
-            onAssignmentsChange([updatedAssignment]);
-        }
+            return a;
+        });
+        onAssignmentsChange(updatedAssignments);
     };
 
     const handleExportPDF = () => {

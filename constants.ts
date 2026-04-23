@@ -164,6 +164,7 @@ export const SHIFT_DEFINITIONS: Record<string, ShiftDefinition> = {
     'SM6':    { code: 'SM6', label: 'SM6', start: '07:00', end: '13:00', hours: 6, category: 'Manhã' },
     'ST6':    { code: 'ST6', label: 'ST6', start: '13:00', end: '19:00', hours: 6, category: 'Tarde' },
     'SM6 ST6':{ code: 'SM6 ST6', label: 'SM6 ST6', start: '07:00', end: '19:00', hours: 12, category: 'Manhã' },
+    'ST6 SN12':{ code: 'ST6 SN12', label: 'ST6 SN12', start: '13:00', end: '07:00', hours: 18, category: 'Tarde' },
     'SN6':    { code: 'SN6', label: 'SN6', start: '19:00', end: '01:00', hours: 6, category: 'Noite' },
     'SN12':   { code: 'SN12', label: 'SN12', start: '19:00', end: '07:00', hours: 12, category: 'Noite' },
 

@@ -252,12 +252,40 @@ export const deleteAssignment = async (id: string): Promise<void> => {
     }
 };
 
+export const saveAssignmentsDiff = async (addedOrModified: ShiftAssignment[], deletedIds: string[]): Promise<void> => {
+    try {
+        if (addedOrModified.length === 0 && deletedIds.length === 0) return;
+        
+        // Firestore batch has a limit of 500 operations.
+        const allOps = [
+            ...addedOrModified.map(a => ({ type: 'set' as const, doc: a })),
+            ...deletedIds.map(id => ({ type: 'delete' as const, id }))
+        ];
+
+        const CHUNK_SIZE = 450;
+        for (let i = 0; i < allOps.length; i += CHUNK_SIZE) {
+            const chunk = allOps.slice(i, i + CHUNK_SIZE);
+            const batch = writeBatch(db);
+            
+            chunk.forEach(op => {
+                if (op.type === 'set') {
+                    const ref = doc(db, 'assignments', op.doc.id);
+                    batch.set(ref, op.doc);
+                } else if (op.type === 'delete') {
+                    const ref = doc(db, 'assignments', op.id);
+                    batch.delete(ref);
+                }
+            });
+            await batch.commit();
+        }
+    } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, 'assignments');
+    }
+};
+
 export const saveAssignments = async (assignments: ShiftAssignment[]): Promise<void> => {
     try {
-        // This is tricky because we might be saving a whole set. 
-        // For performance, we should probably only save changed ones, 
-        // but for now let's do a batch of what's provided.
-        // Note: Firestore batch has a limit of 500 operations.
+        // Deprecated: Overwrites all assignments, exceeding quota. keeping for back-compat.
         const batch = writeBatch(db);
         assignments.forEach(a => {
             const ref = doc(db, 'assignments', a.id);

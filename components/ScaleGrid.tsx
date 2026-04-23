@@ -1,7 +1,7 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, memo, useCallback } from 'react';
 import { Employee, ShiftAssignment, ShiftDefinition } from '../types';
 import { RulesService } from '../services/rulesService';
-import { Search, Calendar, ChevronLeft, ChevronRight, Ban, Trash2, Lock, X, MessageSquare, TrendingUp, Sparkles } from 'lucide-react';
+import { Search, Calendar, ChevronLeft, ChevronRight, Ban, Trash2, Lock, X, MessageSquare, TrendingUp, Sparkles, AlertCircle, Save } from 'lucide-react';
 
 interface ScaleGridProps {
     employees: Employee[];
@@ -57,6 +57,17 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
     const [usageStats, setUsageStats] = useState<Record<string, number>>({});
     const [periodInfo, setPeriodInfo] = useState<{ dateStr: string, period: 'Manhã'|'Tarde'|'Noite', employees: Employee[] } | null>(null);
     
+    const [isSaving, setIsSaving] = useState(false);
+    const [localAssignments, setLocalAssignments] = useState<ShiftAssignment[]>(assignments);
+    const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+    // Sync from props (Firestore) unless there are unsaved local changes
+    useEffect(() => {
+        if (!hasUnsavedChanges && assignments) {
+            setLocalAssignments(assignments);
+        }
+    }, [assignments, hasUnsavedChanges]);
+
     // Batch Event State
     const [showBatchModal, setShowBatchModal] = useState(false);
     const [batchForm, setBatchForm] = useState({
@@ -183,24 +194,59 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
         setSelectedYear(prevDate.getFullYear());
     };
 
-    const filteredEmployees = employees.filter(emp => {
-        const matchName = emp.name.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchTermRole = emp.role.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchRole = roleFilter === 'Todos' || emp.role === roleFilter;
-        return (matchName || matchTermRole) && matchRole;
-    }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    const filteredEmployees = useMemo(() => {
+        return employees.filter(emp => {
+            const matchName = emp.name.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchTermRole = emp.role.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchRole = roleFilter === 'Todos' || emp.role === roleFilter;
+            return (matchName || matchTermRole) && matchRole;
+        }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    }, [employees, searchTerm, roleFilter]);
 
     // --- Helpers ---
-    const getCellAssignments = (empId: string, dateStr: string) => {
-        return assignments.filter(a => a.employeeId === empId && a.date === dateStr);
+    // Memoize assignments per tuple to avoid constant re-filtering on cell render
+    const assignmentsByDateAndEmp = useMemo(() => {
+        const map = new Map<string, ShiftAssignment[]>();
+        localAssignments.forEach(a => {
+            const key = `${a.employeeId}_${a.date}`;
+            if (!map.has(key)) map.set(key, []);
+            map.get(key)!.push(a);
+        });
+        return map;
+    }, [localAssignments]);
+
+    const handleLocalAssignmentChange = (newAssignments: ShiftAssignment[]) => {
+        setLocalAssignments(newAssignments);
+        setHasUnsavedChanges(true);
     };
 
+    const handleSaveChanges = async () => {
+        setIsSaving(true);
+        // onAssignmentChange agora retorna booleano de sucesso
+        const success = await onAssignmentChange(localAssignments) as unknown as boolean;
+        if (success !== false) {
+            setHasUnsavedChanges(false);
+        }
+        setIsSaving(false);
+    };
+
+    const handleDiscardChanges = () => {
+        setLocalAssignments(assignments);
+        setHasUnsavedChanges(false);
+    };
+
+    const EMPTY_ASSIGNMENTS: ShiftAssignment[] = useMemo(() => [], []);
+
+    const getCellAssignments = useCallback((empId: string, dateStr: string) => {
+        return assignmentsByDateAndEmp.get(`${empId}_${dateStr}`) || EMPTY_ASSIGNMENTS;
+    }, [assignmentsByDateAndEmp, EMPTY_ASSIGNMENTS]);
+
     // --- Actions ---
-    const handleCellClick = (empId: string, dateStr: string, empName: string) => {
+    const handleCellClick = useCallback((empId: string, dateStr: string, empName: string) => {
         if (!canEdit) return;
         setActiveCell({ empId, dateStr, empName, seiProcess: '' });
         setShiftSearch('');
-    };
+    }, [canEdit]);
 
     const handleAddShift = (code: string) => {
         if (!activeCell) return;
@@ -208,7 +254,7 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
 
         incrementUsage(code); // Track usage
 
-        let updatedAssignments = [...assignments];
+        let updatedAssignments = [...localAssignments];
 
         if (code === 'BLK') {
             updatedAssignments = updatedAssignments.filter(a => !(a.employeeId === empId && a.date === dateStr));
@@ -230,29 +276,52 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
             }
         }
 
-        onAssignmentChange(updatedAssignments);
+        handleLocalAssignmentChange(updatedAssignments);
         if (code === 'BLK') setActiveCell(null);
     };
 
     const handleRemoveAssignment = async (assignmentId: string) => {
-        await onAssignmentDelete(assignmentId);
+        const remaining = localAssignments.filter(a => a.id !== assignmentId);
+        handleLocalAssignmentChange(remaining);
     };
 
-    const handleClearDay = async (empId: string, dateStr: string) => {
-        const toDelete = assignments.filter(a => a.employeeId === empId && a.date === dateStr);
-        if (toDelete.length > 0) {
-            await Promise.all(toDelete.map(a => onAssignmentDelete(a.id)));
+    const handleClearDay = useCallback((empId: string, dateStr: string) => {
+        const remaining = localAssignments.filter(a => !(a.employeeId === empId && a.date === dateStr));
+        handleLocalAssignmentChange(remaining);
+    }, [localAssignments]);
+
+    const isShiftInPeriod = (shiftCode: string, cat: string, checkPeriod: 'Manhã'|'Tarde'|'Noite'): boolean => {
+        if (!['Manhã', 'Tarde', 'Noite', 'Legenda Especial'].includes(cat)) return false;
+        
+        let isM = cat === 'Manhã';
+        let isT = cat === 'Tarde';
+        let isN = cat === 'Noite';
+
+        if (cat === 'Legenda Especial' || shiftCode.includes('ST6 SN12') || shiftCode.includes('SM6 ST6')) {
+            if (shiftCode.includes('SM6 ST6')) {
+                 isM = true; isT = true;
+            } else if (shiftCode.includes('ST6 SN12')) {
+                 isT = true; isN = true;
+            } else {
+                 if (shiftCode.includes('M')) isM = true;
+                 if (shiftCode.includes('T') && !shiftCode.includes('ST6 SN12')) isT = true;
+                 if (shiftCode.includes('N')) isN = true;
+            }
         }
+        
+        if (checkPeriod === 'Manhã') return isM;
+        if (checkPeriod === 'Tarde') return isT;
+        if (checkPeriod === 'Noite') return isN;
+        return false;
     };
 
     const handleOpenPeriodInfo = (dateStr: string, period: 'Manhã'|'Tarde'|'Noite') => {
         const periodEmployees = filteredEmployees.filter(emp => {
-             const empAssignments = assignments.filter(a => a.employeeId === emp.id && a.date === dateStr);
+             const empAssignments = localAssignments.filter(a => a.employeeId === emp.id && a.date === dateStr);
              return empAssignments.some(a => {
                  const def = shiftDefs[a.shiftCode];
                  const cat = a.category || def?.category;
-                 if (a.shiftCode.includes('SM6 ST6') && (period === 'Manhã' || period === 'Tarde')) return true;
-                 return cat === period;
+                 return isShiftInPeriod(a.shiftCode, cat, period);
              });
         });
         setPeriodInfo({ dateStr, period, employees: periodEmployees });
@@ -269,27 +338,20 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
             stats[dateStr] = { manha: 0, tarde: 0, noite: 0 };
         });
 
-        assignments.forEach(a => {
+        localAssignments.forEach(a => {
             const isEmployeeVisible = filteredEmployees.some(e => e.id === a.employeeId);
             if (!isEmployeeVisible || !stats[a.date]) return;
 
             const def = shiftDefs[a.shiftCode];
             const cat = a.category || def?.category;
 
-            if (a.shiftCode.includes('SM6 ST6')) {
-                stats[a.date].manha += 1;
-                stats[a.date].tarde += 1;
-            } else if (cat === 'Manhã') {
-                stats[a.date].manha += 1;
-            } else if (cat === 'Tarde') {
-                stats[a.date].tarde += 1;
-            } else if (cat === 'Noite') {
-                stats[a.date].noite += 1;
-            }
+            if (isShiftInPeriod(a.shiftCode, cat, 'Manhã')) stats[a.date].manha += 1;
+            if (isShiftInPeriod(a.shiftCode, cat, 'Tarde')) stats[a.date].tarde += 1;
+            if (isShiftInPeriod(a.shiftCode, cat, 'Noite')) stats[a.date].noite += 1;
         });
 
         return stats;
-    }, [assignments, filteredEmployees, daysInMonth, shiftDefs]);
+    }, [localAssignments, filteredEmployees, daysInMonth, shiftDefs]);
 
     // --- Smart Lists Logic ---
     const topUsedShifts = useMemo(() => {
@@ -314,14 +376,23 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
 
     const filteredShifts = useMemo(() => {
         const all = Object.values(shiftDefs);
+        if (!shiftSearch) return []; // Should not run when empty anyway, but an optimization.
+        
         const term = shiftSearch.toLowerCase();
-        return all.filter((s: ShiftDefinition) => 
-            s && s.code && s.label && s.category && (
-            s.code.toLowerCase().includes(term) || 
-            s.label.toLowerCase().includes(term) ||
-            s.category.toLowerCase().includes(term)
-            )
-        );
+        return all.filter((s: ShiftDefinition) => {
+            if (!s || !s.code || !s.label || !s.category) return false;
+            if (s.code.toLowerCase().startsWith(term)) return true; // Prioritize exact code matches first
+            
+            return s.code.toLowerCase().includes(term) || 
+                   s.label.toLowerCase().includes(term) ||
+                   s.category.toLowerCase().includes(term);
+        }).sort((a: ShiftDefinition, b: ShiftDefinition) => {
+            // Sort by code length or exact match priority
+            const aStarts = a.code.toLowerCase().startsWith(term) ? 1 : 0;
+            const bStarts = b.code.toLowerCase().startsWith(term) ? 1 : 0;
+            if (aStarts !== bStarts) return bStarts - aStarts;
+            return a.code.localeCompare(b.code);
+        }).slice(0, 50); // Limit to 50 results to prevent massive DOM updates
     }, [shiftSearch, shiftDefs]);
 
     const isWeekend = (date: Date) => date.getDay() === 0 || date.getDay() === 6;
@@ -341,7 +412,7 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
             return;
         }
 
-        const newAssignments = [...assignments];
+        const newAssignments = [...localAssignments];
         const def = shiftDefs[batchForm.shiftCode];
 
         let current = new Date(start);
@@ -364,7 +435,7 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
             current.setDate(current.getDate() + 1);
         }
 
-        onAssignmentChange(newAssignments);
+        handleLocalAssignmentChange(newAssignments);
         setShowBatchModal(false);
         setBatchForm({ employeeId: '', startDate: '', endDate: '', shiftCode: '' });
     };
@@ -481,55 +552,44 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
                              
                              {/* DEFAULT VIEW (No Search) */}
                              {shiftSearch === '' && (
-                                <div className="space-y-4">
-                                    <button 
-                                        onClick={() => handleAddShift('BLK')}
-                                        className="w-full text-left px-4 py-3 bg-red-50 hover:bg-red-100 rounded-lg flex justify-between items-center group border border-red-100"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="bg-white text-red-600 p-2 rounded shadow-sm">
-                                                <Ban size={20}/>
-                                            </div>
-                                            <div>
-                                                <div className="font-bold text-red-700">BLOQUEAR DIA</div>
-                                                <div className="text-xs text-red-500">Limpar e bloquear data</div>
-                                            </div>
-                                        </div>
-                                    </button>
-
-                                    {topUsedShifts.length > 0 && (
-                                        <div>
-                                            <h4 className="px-4 text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1">
-                                                <TrendingUp size={12}/> Mais Utilizados
-                                            </h4>
-                                            {renderShiftButtonList(topUsedShifts)}
-                                        </div>
-                                    )}
-
-                                    <div>
-                                        <h4 className="px-4 text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1">
-                                            <Sparkles size={12} className="text-gdf-accent"/> Plantão Geral (Padrão)
+                                <div className="space-y-6 pt-2 pb-4">
+                                    <div className="px-4">
+                                        <h4 className="text-xs font-bold text-gray-400 uppercase mb-3 flex items-center gap-1">
+                                            <Sparkles size={14} className="text-blue-500" /> Acesso Rápido (Prioridade)
                                         </h4>
-                                        {renderShiftButtonList(standardShifts)}
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {['SM6', 'ST6', 'SN12', 'SM6 ST6', 'ST6 SN12'].map(code => {
+                                                const def = shiftDefs[code];
+                                                if (!def) return null;
+                                                return (
+                                                    <button 
+                                                        key={code}
+                                                        onClick={() => handleAddShift(code)}
+                                                        className="bg-white border hover:bg-blue-50 hover:border-blue-300 border-gray-200 rounded-xl p-3 shadow-sm flex flex-col items-center justify-center transition-all duration-150 active:scale-95"
+                                                    >
+                                                        <span className="font-bold text-gray-800 text-lg tracking-tight">{code}</span>
+                                                        <span className="text-[10px] text-gray-500 font-medium">({def.hours}h)</span>
+                                                    </button>
+                                                )
+                                            })}
+                                        </div>
                                     </div>
 
-                                    {specialShifts.length > 0 && (
-                                        <div>
-                                            <h4 className="px-4 text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1">
-                                                <Sparkles size={12} className="text-pink-500"/> Legendas Especiais
-                                            </h4>
-                                            {renderShiftButtonList(specialShifts)}
-                                        </div>
-                                    )}
-
-                                    {bankShifts.length > 0 && (
-                                        <div>
-                                            <h4 className="px-4 text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1">
-                                                <TrendingUp size={12} className="text-orange-500"/> Banco de Horas (BH+ / BH-)
-                                            </h4>
-                                            {renderShiftButtonList(bankShifts)}
-                                        </div>
-                                    )}
+                                    <div className="px-4">
+                                        <button 
+                                            onClick={() => handleAddShift('BLK')}
+                                            className="w-full bg-white border border-red-200 hover:bg-red-50 text-red-600 rounded-xl p-3 shadow-sm flex items-center justify-center gap-2 transition-all duration-150 active:scale-95"
+                                        >
+                                            <Ban size={18}/>
+                                            <span className="font-bold text-sm tracking-wide">BLOQUEAR O DIA (FOLGA)</span>
+                                        </button>
+                                    </div>
+                                    
+                                    <div className="px-4 text-center">
+                                        <p className="text-sm text-gray-500">
+                                            Para outras legendas, digite no campo de <strong>busca</strong> acima.
+                                        </p>
+                                    </div>
                                 </div>
                              )}
 
@@ -810,76 +870,19 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
                                             if (hasBlock) cellBg = 'bg-red-50 pattern-diagonal-lines-sm';
 
                                             return (
-                                                <td 
-                                                    key={i} 
-                                                    onClick={() => handleCellClick(emp.id, dateStr, emp.name)}
-                                                    className={`border-gray-200 p-0 relative h-16 text-center cursor-pointer hover:brightness-95 align-top
-                                                        ${isSaturday(d) ? 'border-r-2 border-r-gray-400' : 'border-r'}
-                                                        ${cellBg}
-                                                    `}
-                                                >
-                                                    <div className="w-full h-full flex flex-col gap-0.5 p-0.5 justify-start">
-                                                        {hasBlock ? (
-                                                            <div className="flex-1 flex items-center justify-center text-red-500">
-                                                                <Lock size={14}/>
-                                                            </div>
-                                                        ) : (
-                                                            (() => {
-                                                                const sortedAssignments = [...cellAssignments].sort((a, b) => {
-                                                                    const categoryWeight: Record<string, number> = {
-                                                                        'Manhã': 1,
-                                                                        'Tarde': 2,
-                                                                        'Noite': 3,
-                                                                        'Bloqueio': 4,
-                                                                        'Banco de Horas': 5,
-                                                                        'Legenda Especial': 6,
-                                                                        'Afastamento': 7
-                                                                    };
-                                                                    
-                                                                    const defA = shiftDefs[a.shiftCode];
-                                                                    const defB = shiftDefs[b.shiftCode];
-                                                                    
-                                                                    const weightA = defA ? (categoryWeight[defA.category] || 99) : 99;
-                                                                    const weightB = defB ? (categoryWeight[defB.category] || 99) : 99;
-                                                                    
-                                                                    return weightA - weightB;
-                                                                });
-
-                                                                return sortedAssignments.map((assignment, idx) => {
-                                                                    const def = shiftDefs[assignment.shiftCode];
-                                                                    const chipColor = def ? RulesService.getShiftColor(def.category, def.code) : 'bg-gray-200';
-                                                                    
-                                                                    // FIXED HEIGHT CHIP for consistent visual weight, but allow multiline if shiftCode has spaces
-                                                                    const shiftParts = assignment.shiftCode.split(' ');
-                                                                    return (
-                                                                        <div 
-                                                                            key={idx} 
-                                                                            className={`min-h-[20px] w-full py-0.5 px-0.5 rounded flex flex-col items-center justify-center text-[9px] font-bold leading-[1.1] border shadow-sm ${chipColor} flex-none relative`}
-                                                                            title={`${def?.label}${assignment.seiProcess ? ` - SEI: ${assignment.seiProcess}` : ''}`}
-                                                                        >
-                                                                            {shiftParts.map((part, pIdx) => (
-                                                                                <span key={pIdx} className="block">{part}</span>
-                                                                            ))}
-                                                                            {assignment.seiProcess && (
-                                                                                <div className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full border border-white" title={`SEI: ${assignment.seiProcess}`}></div>
-                                                                            )}
-                                                                        </div>
-                                                                    );
-                                                                });
-                                                            })()
-                                                        )}
-                                                    </div>
-
-                                                    {cellAssignments.length > 0 && canEdit && (
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); handleClearDay(emp.id, dateStr); }}
-                                                            className="absolute top-0 right-0 hidden group-hover:flex bg-white rounded-full p-0.5 shadow-sm border border-gray-300 z-10 hover:text-red-600"
-                                                            title="Limpar Dia"
-                                                        >
-                                                            <Trash2 size={10} />
-                                                        </button>
-                                                    )}
-                                                </td>
+                                                <ScaleCell 
+                                                    key={i}
+                                                    emp={emp}
+                                                    d={d}
+                                                    dateStr={dateStr}
+                                                    cellAssignments={cellAssignments}
+                                                    isSaturday={isSaturday(d)}
+                                                    isWeekend={isWeekend(d)}
+                                                    canEdit={canEdit}
+                                                    shiftDefs={shiftDefs}
+                                                    onCellClick={handleCellClick}
+                                                    onClearDay={handleClearDay}
+                                                />
                                             );
                                         })}
                                     </tr>
@@ -891,7 +894,7 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
                                         </td>
 
                                         {weekSegments.map((segment, idx) => {
-                                            const hours = RulesService.calculateRangeHours(emp.id, assignments, segment.fullWeekStart, segment.fullWeekEnd, shiftDefs);
+                                            const hours = RulesService.calculateRangeHours(emp.id, localAssignments, segment.fullWeekStart, segment.fullWeekEnd, shiftDefs);
                                             const y = segment.fullWeekStart.getFullYear();
                                             const m = String(segment.fullWeekStart.getMonth() + 1).padStart(2, '0');
                                             const d = String(segment.fullWeekStart.getDate()).padStart(2, '0');
@@ -955,5 +958,101 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
         </div>
     );
 };
+
+interface ScaleCellProps {
+    emp: Employee;
+    d: Date;
+    dateStr: string;
+    cellAssignments: ShiftAssignment[];
+    isSaturday: boolean;
+    isWeekend: boolean;
+    canEdit: boolean;
+    shiftDefs: Record<string, ShiftDefinition>;
+    onCellClick: (empId: string, dateStr: string, empName: string) => void;
+    onClearDay: (empId: string, dateStr: string) => void;
+}
+
+const ScaleCell = memo(({ emp, d, dateStr, cellAssignments, isSaturday, isWeekend, canEdit, shiftDefs, onCellClick, onClearDay }: ScaleCellProps) => {
+    let cellBg = isWeekend ? 'bg-orange-50' : 'bg-white';
+    const hasBlock = cellAssignments.some(a => a.isManualLock);
+    
+    if (hasBlock) cellBg = 'bg-red-50 pattern-diagonal-lines-sm';
+
+    return (
+        <td 
+            onClick={() => onCellClick(emp.id, dateStr, emp.name)}
+            className={`border-gray-200 p-0 relative h-16 text-center cursor-pointer hover:brightness-95 align-top
+                ${isSaturday ? 'border-r-2 border-r-gray-400' : 'border-r'}
+                ${cellBg}
+            `}
+        >
+            <div className="w-full h-full flex flex-col gap-0.5 p-0.5 justify-start">
+                {hasBlock ? (
+                    <div className="flex-1 flex items-center justify-center text-red-500">
+                        <Lock size={14}/>
+                    </div>
+                ) : (
+                    (() => {
+                        const sortedAssignments = [...cellAssignments].sort((a, b) => {
+                            const categoryWeight: Record<string, number> = {
+                                'Manhã': 1,
+                                'Tarde': 2,
+                                'Noite': 3,
+                                'Bloqueio': 4,
+                                'Banco de Horas': 5,
+                                'Legenda Especial': 6,
+                                'Afastamento': 7
+                            };
+                            
+                            const defA = shiftDefs[a.shiftCode];
+                            const defB = shiftDefs[b.shiftCode];
+                            
+                            const weightA = defA ? (categoryWeight[defA.category] || 99) : 99;
+                            const weightB = defB ? (categoryWeight[defB.category] || 99) : 99;
+                            
+                            if (weightA !== weightB) return weightA - weightB;
+                            
+                            if (defA && defB && defA.start && defB.start) {
+                                  return defA.start.localeCompare(defB.start);
+                            }
+                            return a.shiftCode.localeCompare(b.shiftCode);
+                        });
+
+                        return sortedAssignments.map((assignment, idx) => {
+                            const def = shiftDefs[assignment.shiftCode];
+                            const chipColor = def ? RulesService.getShiftColor(def.category, def.code) : 'bg-gray-200';
+                            
+                            const shiftParts = assignment.shiftCode.split(' ');
+                            return (
+                                <div 
+                                    key={idx} 
+                                    className={`min-h-[20px] w-full py-0.5 px-0.5 rounded flex flex-col items-center justify-center text-[9px] font-bold leading-[1.1] border shadow-sm ${chipColor} flex-none relative`}
+                                    title={`${def?.label}${assignment.seiProcess ? ` - SEI: ${assignment.seiProcess}` : ''}`}
+                                >
+                                    {shiftParts.map((part, pIdx) => (
+                                        <span key={pIdx} className="block">{part}</span>
+                                    ))}
+                                    {assignment.seiProcess && (
+                                        <div className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full border border-white" title={`SEI: ${assignment.seiProcess}`}></div>
+                                    )}
+                                </div>
+                            );
+                        });
+                    })()
+                )}
+            </div>
+
+            {cellAssignments.length > 0 && canEdit && (
+                <button 
+                    onClick={(e) => { e.stopPropagation(); onClearDay(emp.id, dateStr); }}
+                    className="absolute top-0 right-0 hidden group-hover:flex bg-white rounded-full p-0.5 shadow-sm border border-gray-300 z-10 hover:text-red-600"
+                    title="Limpar Dia"
+                >
+                    <Trash2 size={10} />
+                </button>
+            )}
+        </td>
+    );
+});
 
 export default ScaleGrid;
