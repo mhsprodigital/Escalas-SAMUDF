@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { UnitStructure, ShiftAssignment, Employee, ShiftDefinition, Vehicle, Sector } from '../types';
 import { subscribeToSettings, saveSettings, getEmployees, getAssignments, subscribeToVehicles, subscribeToSectors, saveVehicle, deleteVehicle, saveSector, deleteSector, saveEmployee } from '../services/storageService';
-import { Plus, Trash2, Layers, Briefcase, Clock, Download, Calendar, Truck, MapPin, Lock, Unlock, X, Edit2 } from 'lucide-react';
-import ConfirmModal from './ConfirmModal';
+import { Plus, Trash2, Layers, Briefcase, Clock, Download, Calendar, Truck, MapPin, Lock, Unlock, X } from 'lucide-react';
 
 interface SettingsData {
     rulesTitle: string;
@@ -40,25 +39,6 @@ const Settings: React.FC<SettingsProps> = ({ canEdit, professionalCategories, se
     const [newUnitName, setNewUnitName] = useState('');
     const [newUnitSectorName, setNewUnitSectorName] = useState('');
     
-    // Editing state
-    const [editingUnitId, setEditingUnitId] = useState<string | null>(null);
-    const [editingUnitValue, setEditingUnitValue] = useState('');
-    const [editingSector, setEditingSector] = useState<{unitId: string, oldName: string} | null>(null);
-    const [editingSectorValue, setEditingSectorValue] = useState('');
-    
-    // Deletion Modal State
-    const [confirmModal, setConfirmModal] = useState<{
-        isOpen: boolean;
-        title: string;
-        message: string;
-        onConfirm: () => void;
-    }>({
-        isOpen: false,
-        title: '',
-        message: '',
-        onConfirm: () => {}
-    });
-
     const [newHour, setNewHour] = useState<string>('');
     
     // CSV Export State
@@ -115,37 +95,11 @@ const Settings: React.FC<SettingsProps> = ({ canEdit, professionalCategories, se
         setNewUnitName('');
     };
 
-    const handleDeleteUnit = (unitId: string) => {
-        const unit = settings.units.find(u => u.id === unitId);
-        if (!unit) return;
-
-        setConfirmModal({
-            isOpen: true,
-            title: 'Remover Núcleo',
-            message: `Deseja realmente remover o núcleo "${unit.name}"? Isso afetará os servidores vinculados a ele.`,
-            onConfirm: async () => {
-                const updatedUnits = settings.units.filter(u => u.id !== unitId);
-                await saveSettings({ ...settings, units: updatedUnits });
-                if (selectedUnitId === unitId) setSelectedUnitId(null);
-                setConfirmModal(prev => ({ ...prev, isOpen: false }));
-            }
-        });
-    };
-
-    const handleEditUnit = async (unitId: string) => {
-        if (!editingUnitValue.trim()) {
-            setEditingUnitId(null);
-            return;
-        }
-        const updatedUnits = settings.units.map(u => {
-            if (u.id === unitId) {
-                return { ...u, name: editingUnitValue.trim() };
-            }
-            return u;
-        });
+    const handleDeleteUnit = async (unitId: string) => {
+        if (!confirm('Deseja realmente remover este Núcleo? Isso afetará os servidores vinculados a ele.')) return;
+        const updatedUnits = settings.units.filter(u => u.id !== unitId);
         await saveSettings({ ...settings, units: updatedUnits });
-        setEditingUnitId(null);
-        setEditingUnitValue('');
+        if (selectedUnitId === unitId) setSelectedUnitId(null);
     };
 
     const handleAddUnitSector = async (unitId: string) => {
@@ -160,39 +114,15 @@ const Settings: React.FC<SettingsProps> = ({ canEdit, professionalCategories, se
         setNewUnitSectorName('');
     };
 
-    const handleDeleteUnitSector = (unitId: string, sectorName: string) => {
-        setConfirmModal({
-            isOpen: true,
-            title: 'Remover Setor',
-            message: `Deseja realmente remover o setor "${sectorName}"?`,
-            onConfirm: async () => {
-                const updatedUnits = settings.units.map(u => {
-                    if (u.id === unitId) {
-                        return { ...u, sectors: u.sectors.filter(s => s !== sectorName) };
-                    }
-                    return u;
-                });
-                await saveSettings({ ...settings, units: updatedUnits });
-                setConfirmModal(prev => ({ ...prev, isOpen: false }));
-            }
-        });
-    };
-
-    const handleEditSector = async (unitId: string, oldName: string) => {
-        if (!editingSectorValue.trim() || editingSectorValue.trim() === oldName) {
-            setEditingSector(null);
-            return;
-        }
-        const updatedUnits = settings.units.map(u => {
+    const handleDeleteUnitSector = async (unitId: string, sectorName: string) => {
+        if (!confirm(`Deseja realmente remover o setor ${sectorName}?`)) return;
+         const updatedUnits = settings.units.map(u => {
             if (u.id === unitId) {
-                const updatedSectors = u.sectors.map(s => s === oldName ? editingSectorValue.trim() : s);
-                return { ...u, sectors: updatedSectors };
+                return { ...u, sectors: u.sectors.filter(s => s !== sectorName) };
             }
             return u;
         });
         await saveSettings({ ...settings, units: updatedUnits });
-        setEditingSector(null);
-        setEditingSectorValue('');
     };
 
     // --- Hours Handlers ---
@@ -467,41 +397,16 @@ const Settings: React.FC<SettingsProps> = ({ canEdit, professionalCategories, se
                                             onClick={() => setSelectedUnitId(unit.id)}
                                             className={`p-2 rounded flex justify-between items-center cursor-pointer transition-colors ${
                                                 selectedUnitId === unit.id ? 'bg-blue-100 text-blue-800 font-bold border-blue-200' : 'bg-white border-transparent hover:border-gray-200 text-gray-600'
-                                            } border group`}
+                                            } border`}
                                         >
-                                            {editingUnitId === unit.id ? (
-                                                <input 
-                                                    autoFocus
-                                                    className="w-full bg-white border border-blue-400 rounded px-1 py-0.5 text-sm font-normal text-gray-700"
-                                                    value={editingUnitValue}
-                                                    onChange={e => setEditingUnitValue(e.target.value)}
-                                                    onBlur={() => handleEditUnit(unit.id)}
-                                                    onKeyDown={e => e.key === 'Enter' && handleEditUnit(unit.id)}
-                                                    onClick={e => e.stopPropagation()}
-                                                />
-                                            ) : (
-                                                <span className="text-sm truncate mr-2">{unit.name}</span>
-                                            )}
-                                            
+                                            <span className="text-sm truncate mr-2">{unit.name}</span>
                                             {canEdit && (
-                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button 
-                                                        onClick={(e) => { 
-                                                            e.stopPropagation(); 
-                                                            setEditingUnitId(unit.id); 
-                                                            setEditingUnitValue(unit.name);
-                                                        }}
-                                                        className="text-gray-400 hover:text-blue-500 hover:bg-white p-1 rounded transition-colors"
-                                                    >
-                                                        <Edit2 size={12}/>
-                                                    </button>
-                                                    <button 
-                                                        onClick={(e) => { e.stopPropagation(); handleDeleteUnit(unit.id); }}
-                                                        className="text-gray-400 hover:text-red-500 hover:bg-white p-1 rounded transition-colors"
-                                                    >
-                                                        <Trash2 size={12}/>
-                                                    </button>
-                                                </div>
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); handleDeleteUnit(unit.id); }}
+                                                    className="text-gray-400 hover:text-red-500 hover:bg-red-50 p-1 rounded transition-colors"
+                                                >
+                                                    <Trash2 size={14}/>
+                                                </button>
                                             )}
                                         </div>
                                     ))}
@@ -535,38 +440,15 @@ const Settings: React.FC<SettingsProps> = ({ canEdit, professionalCategories, se
                                             )}
                                             <div className="overflow-y-auto flex-1 space-y-1">
                                                 {settings.units?.find(u => u.id === selectedUnitId)?.sectors.map(sector => (
-                                                    <div key={sector} className="bg-white border rounded p-2 flex justify-between items-center text-sm text-gray-600 group">
-                                                        {editingSector?.unitId === selectedUnitId && editingSector?.oldName === sector ? (
-                                                            <input 
-                                                                autoFocus
-                                                                className="w-full bg-white border border-blue-400 rounded px-1 py-0.5 text-xs font-normal text-gray-700"
-                                                                value={editingSectorValue}
-                                                                onChange={e => setEditingSectorValue(e.target.value)}
-                                                                onBlur={() => handleEditSector(selectedUnitId, sector)}
-                                                                onKeyDown={e => e.key === 'Enter' && handleEditSector(selectedUnitId, sector)}
-                                                            />
-                                                        ) : (
-                                                            <span className="truncate">{sector}</span>
-                                                        )}
-                                                        
+                                                    <div key={sector} className="bg-white border rounded p-2 flex justify-between items-center text-sm text-gray-600">
+                                                        <span className="truncate">{sector}</span>
                                                         {canEdit && (
-                                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                <button 
-                                                                    onClick={() => {
-                                                                        setEditingSector({unitId: selectedUnitId, oldName: sector});
-                                                                        setEditingSectorValue(sector);
-                                                                    }}
-                                                                    className="text-gray-400 hover:text-blue-500 hover:bg-gray-50 p-1 rounded transition-colors"
-                                                                >
-                                                                    <Edit2 size={12}/>
-                                                                </button>
-                                                                <button 
-                                                                    onClick={() => handleDeleteUnitSector(selectedUnitId, sector)}
-                                                                    className="text-gray-400 hover:text-red-500 hover:bg-gray-50 p-1 rounded transition-colors"
-                                                                >
-                                                                    <X size={12}/>
-                                                                </button>
-                                                            </div>
+                                                            <button 
+                                                                onClick={() => handleDeleteUnitSector(selectedUnitId, sector)}
+                                                                className="text-gray-400 hover:text-red-500 hover:bg-red-50 p-1 rounded transition-colors"
+                                                            >
+                                                                <X size={14}/>
+                                                            </button>
                                                         )}
                                                     </div>
                                                 ))}
@@ -666,15 +548,6 @@ const Settings: React.FC<SettingsProps> = ({ canEdit, professionalCategories, se
                     ))}
                 </div>
             </div>
-
-            {/* Deletion Confirm Modal */}
-            <ConfirmModal 
-                isOpen={confirmModal.isOpen}
-                title={confirmModal.title}
-                message={confirmModal.message}
-                onConfirm={confirmModal.onConfirm}
-                onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
-            />
 
             {/* Reassignment Modal */}
             {categoryToDelete && (

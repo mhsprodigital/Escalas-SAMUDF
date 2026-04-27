@@ -55,6 +55,7 @@ const App: React.FC = () => {
     const [currentWeekStart, setCurrentWeekStart] = useState<Date>(new Date());
     const [isInitialLoading, setIsInitialLoading] = useState(true);
     const [employeeToDelete, setEmployeeToDelete] = useState<string | null>(null);
+    const [appError, setAppError] = useState<string | null>(null);
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -63,6 +64,15 @@ const App: React.FC = () => {
         });
         return () => unsubscribe();
     }, []);
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (isAuthChecking || !settings) {
+                setAppError(`Tempo limite excedido. Detalhes: user=${!!user}, isAuthChecking=${isAuthChecking}, settings=${!!settings}`);
+            }
+        }, 10000);
+        return () => clearTimeout(timer);
+    }, [isAuthChecking, settings, user]);
 
     useEffect(() => {
         if (!user) return;
@@ -253,12 +263,12 @@ const App: React.FC = () => {
         return assignments.filter(a => accessibleIds.has(a.employeeId));
     }, [assignments, accessibleEmployees, effectiveUnitFilter, globalSectorFilter]);
 
-    if (isAuthChecking || !settings) {
+    if (isAuthChecking) {
         return (
             <div className="flex items-center justify-center h-screen w-full bg-gray-100">
                 <div className="flex flex-col items-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gdf-primary mb-4"></div>
-                    <p className="text-gray-500">Verificando autenticação e carregando dados...</p>
+                    <p className="text-gray-500">Verificando autenticação...</p>
                 </div>
             </div>
         );
@@ -276,6 +286,34 @@ const App: React.FC = () => {
                     >
                         Entrar com Google
                     </button>
+                </div>
+            </div>
+        );
+    }
+
+    if (appError && !settings) {
+        return (
+            <div className="flex items-center justify-center h-screen w-full bg-gray-100 p-4">
+                <div className="bg-red-50 p-6 rounded-lg shadow-lg w-full max-w-md border border-red-300">
+                    <h2 className="text-xl font-bold text-red-700 mb-4">Falha no Carregamento</h2>
+                    <p className="text-sm text-red-600 word-break mb-4">
+                        O usuário foi autenticado, mas não conseguimos carregar os dados do Firestore. 
+                        Isso geralmente indica um erro de permissão ou rede.
+                    </p>
+                    <div className="bg-white p-3 rounded border border-red-100 text-xs text-red-500 font-mono overflow-auto max-h-32">
+                        {appError}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (!settings) {
+        return (
+            <div className="flex items-center justify-center h-screen w-full bg-gray-100">
+                <div className="flex flex-col items-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gdf-primary mb-4"></div>
+                    <p className="text-gray-500">Carregando dados do sistema...</p>
                 </div>
             </div>
         );

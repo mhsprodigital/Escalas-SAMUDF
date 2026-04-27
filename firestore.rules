@@ -22,12 +22,16 @@ service cloud.firestore {
     }
 
     function isMaster() {
-      return isAuthenticated() && request.auth.token.email.lower() == "mhs.pro.digital@gmail.com";
+      return isAuthenticated() && 
+             'email' in request.auth.token && 
+             request.auth.token.email != null && 
+             request.auth.token.email.lower() == "mhs.pro.digital@gmail.com";
     }
 
     function getRole() {
-      let userDoc = /databases/$(database)/documents/system_users/$(request.auth.token.email.lower());
-      return exists(userDoc) ? get(userDoc).data.role : 'VIEWER';
+      let email = ('email' in request.auth.token && request.auth.token.email != null) ? request.auth.token.email.lower() : '';
+      let userDoc = /databases/$(database)/documents/system_users/$(email);
+      return (email != '' && exists(userDoc)) ? get(userDoc).data.role : 'VIEWER';
     }
 
     function isAdmin() {
@@ -62,6 +66,10 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create, update: if isAdmin() && isValidSystemUser(request.resource.data);
       allow delete: if isAdmin();
+    }
+
+    match /test/connection {
+      allow read: if true;
     }
 
     match /employees/{employeeId} {

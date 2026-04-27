@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { SystemUser, UserRole, UnitStructure } from '../types';
 import { subscribeToSystemUsers, saveSystemUser, deleteSystemUser, subscribeToSettings } from '../services/storageService';
 import { Shield, UserPlus, Trash2, Mail, User as UserIcon, CheckCircle, AlertCircle, Edit2, X, Building2 } from 'lucide-react';
-import ConfirmModal from './ConfirmModal';
 
 const AccessManagement: React.FC = () => {
     const [users, setUsers] = useState<SystemUser[]>([]);
@@ -17,19 +16,6 @@ const AccessManagement: React.FC = () => {
     const [editingEmail, setEditingEmail] = useState<string | null>(null);
     const [editRole, setEditRole] = useState<UserRole>('VIEWER');
     const [editUnitAccess, setEditUnitAccess] = useState<string>('');
-
-    // Confirmation Modal State
-    const [confirmModal, setConfirmModal] = useState<{
-        isOpen: boolean;
-        title: string;
-        message: string;
-        onConfirm: () => void;
-    }>({
-        isOpen: false,
-        title: '',
-        message: '',
-        onConfirm: () => {}
-    });
 
     useEffect(() => {
         const unsubscribeUsers = subscribeToSystemUsers((data) => {
@@ -75,23 +61,14 @@ const AccessManagement: React.FC = () => {
         }
     };
 
-    const handleDelete = (email: string) => {
-        setConfirmModal({
-            isOpen: true,
-            title: 'Remover Acesso',
-            message: `Deseja realmente remover o acesso de ${email}?`,
-            onConfirm: async () => {
-                try {
-                    await deleteSystemUser(email);
-                    setConfirmModal(prev => ({ ...prev, isOpen: false }));
-                } catch (error) {
-                    console.error('Erro ao deletar usuário:', error);
-                    // Standard message for UI consistency
-                    setMessage({ text: 'Erro ao excluir acesso.', type: 'error' });
-                    setConfirmModal(prev => ({ ...prev, isOpen: false }));
-                }
-            }
-        });
+    const handleDelete = async (email: string) => {
+        if (!confirm(`Deseja realmente remover o acesso de ${email}?`)) return;
+        try {
+            await deleteSystemUser(email);
+        } catch (error) {
+            console.error('Erro ao deletar usuário:', error);
+            alert('Erro ao excluir acesso.');
+        }
     };
 
     const handleStartEdit = (user: SystemUser) => {
@@ -332,14 +309,6 @@ const AccessManagement: React.FC = () => {
                     <li>Certifique-se de que o e-mail está escrito corretamente, sem espaços extras.</li>
                 </ul>
             </div>
-
-            <ConfirmModal 
-                isOpen={confirmModal.isOpen}
-                title={confirmModal.title}
-                message={confirmModal.message}
-                onConfirm={confirmModal.onConfirm}
-                onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
-            />
         </div>
     );
 };
