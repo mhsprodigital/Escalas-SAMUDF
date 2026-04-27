@@ -9,10 +9,12 @@ interface StaffFormProps {
     onCancel: () => void;
     initialData?: Employee | null;
     professionalCategories: Record<string, string>;
+    units?: UnitStructure[];
+    restrictedUnit?: string | null;
 }
 
-const StaffForm: React.FC<StaffFormProps> = ({ onSave, onCancel, initialData, professionalCategories }) => {
-    const [units, setUnits] = useState<UnitStructure[]>([]);
+const StaffForm: React.FC<StaffFormProps> = ({ onSave, onCancel, initialData, professionalCategories, units: propUnits, restrictedUnit }) => {
+    const [units, setUnits] = useState<UnitStructure[]>(propUnits || []);
     const [availableHours, setAvailableHours] = useState<number[]>([]);
     const [isSaving, setIsSaving] = useState(false);
     const [formId] = useState<string>(initialData?.id || crypto.randomUUID());
@@ -35,17 +37,33 @@ const StaffForm: React.FC<StaffFormProps> = ({ onSave, onCancel, initialData, pr
 
     const [formData, setFormData] = useState<Partial<Employee>>(initialData || {
         contractHours: 40,
-        unit: 'Instituição Padrão',
-        sector: 'Pronto Socorro Geral',
+        unit: restrictedUnit || units[0]?.name || '',
+        sector: '',
         employmentType: 'Efetivo',
         preferences: defaultPreferences
     });
 
+    useEffect(() => {
+        // Se mudou de unidade, reseta o setor caso não exista
+        const currentUnit = units.find(u => u.name === formData.unit);
+        if (currentUnit && currentUnit.sectors) {
+            if (!formData.sector || !currentUnit.sectors.includes(formData.sector)) {
+                setFormData(prev => ({ ...prev, sector: currentUnit.sectors[0] || '' }));
+            }
+        }
+    }, [formData.unit, units]);
+
     const [prefs, setPrefs] = useState<EmployeePreferences>(initialData?.preferences || defaultPreferences);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-        const { name, value } = e.target;
+        const { name, value, type } = e.target;
         
+        if (type === 'checkbox') {
+             const checked = (e.target as HTMLInputElement).checked;
+             setFormData(prev => ({ ...prev, [name]: checked }));
+             return;
+        }
+
         if (name === 'contact') {
             // Simple (ddd) xxxxx-xxxx mask
             const cleaned = value.replace(/\D/g, '');
@@ -88,8 +106,8 @@ const StaffForm: React.FC<StaffFormProps> = ({ onSave, onCancel, initialData, pr
                 coren: formData.coren || '',
                 role: formData.role || 'Enfermeiro(a)',
                 contractHours: Number(formData.contractHours),
-                unit: 'Instituição Padrão',
-                sector: 'Pronto Socorro Geral', 
+                unit: formData.unit || '',
+                sector: formData.sector || '', 
                 cnes: formData.cnes || '',
                 contact: formData.contact || '',
                 restrictions: formData.restrictions || '',
@@ -99,7 +117,8 @@ const StaffForm: React.FC<StaffFormProps> = ({ onSave, onCancel, initialData, pr
                     reducaoCarga: Number(prefs.reducaoCarga)
                 },
                 employmentType: formData.employmentType as 'Efetivo' | 'Temporário',
-                contractExpiry: formData.employmentType === 'Temporário' ? (formData.contractExpiry || null) : null
+                contractExpiry: formData.employmentType === 'Temporário' ? (formData.contractExpiry || null) : null,
+                isTpdOnly: !!formData.isTpdOnly
             };
             await Promise.resolve(onSave(newEmployee));
         } catch (error) {
@@ -246,6 +265,57 @@ const StaffForm: React.FC<StaffFormProps> = ({ onSave, onCancel, initialData, pr
                             >
                                 <option value="Efetivo">Efetivo</option>
                                 <option value="Temporário">Temporário (Contrato)</option>
+                            </select>
+                        </div>
+                        
+                        <div className="col-span-1 md:col-span-2">
+                            <label className="flex items-start gap-3 p-3 bg-blue-50/50 border border-blue-100 rounded-lg cursor-pointer hover:bg-blue-50 transition">
+                                <div className="flex-shrink-0 mt-0.5">
+                                    <input 
+                                        type="checkbox" 
+                                        name="isTpdOnly"
+                                        checked={!!formData.isTpdOnly}
+                                        onChange={handleChange}
+                                        className="h-5 w-5 text-gdf-primary border-gray-300 rounded focus:ring-gdf-primary"
+                                    />
+                                </div>
+                                <div className="flex-1">
+                                    <span className="block text-sm font-semibold text-gray-800">Servidor atuará apenas como TPD (Hora Extra)</span>
+                                    <span className="block text-xs text-gray-500 mt-1">
+                                        Servidor lotado em outra unidade que fará apenas TPD neste setor. Ele não contabilizará horas faltantes e será isento da verificação de carga horária contratual na escala.
+                                    </span>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">Núcleo (Unidade)</label>
+                            <select
+                                name="unit"
+                                value={formData.unit || ''}
+                                onChange={handleChange}
+                                disabled={!!restrictedUnit}
+                                className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-gdf-primary focus:border-transparent transition-all shadow-sm cursor-pointer disabled:bg-gray-100 disabled:text-gray-500"
+                            >
+                                <option value="" disabled>Selecione um núcleo...</option>
+                                {units.map((u) => (
+                                    <option key={u.id} value={u.name}>{u.name}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">Setor</label>
+                            <select
+                                name="sector"
+                                value={formData.sector || ''}
+                                onChange={handleChange}
+                                className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-gdf-primary focus:border-transparent transition-all shadow-sm cursor-pointer"
+                            >
+                                <option value="" disabled>Selecione um setor...</option>
+                                {units.find(u => u.name === formData.unit)?.sectors?.map((s) => (
+                                    <option key={s} value={s}>{s}</option>
+                                ))}
                             </select>
                         </div>
 

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Employee, ShiftAssignment, ShiftDefinition } from '../types';
-import { Users, AlertTriangle, Building2, Calendar, X, Filter, TrendingUp } from 'lucide-react';
+import { Users, AlertTriangle, Building2, Calendar, X, Filter, TrendingUp, User as UserIcon } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from 'recharts';
 
 interface DashboardProps {
@@ -41,6 +41,7 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
     
     const [roleFilter, setRoleFilter] = useState<string>('Todos');
     const [periodFilter, setPeriodFilter] = useState<string>('Todos');
+    const [employeeFilter, setEmployeeFilter] = useState<string>('Todos');
     const [chartMetric, setChartMetric] = useState<'hours' | 'professionals'>('hours');
     
     // Month and Year Filters
@@ -78,9 +79,39 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
         }));
     }, [daysInMonth]);
 
+    const isShiftInPeriod = (shiftCode: string, cat: string, checkPeriod: 'Manhã'|'Tarde'|'Noite'): boolean => {
+        if (!['Manhã', 'Tarde', 'Noite', 'Legenda Especial'].includes(cat)) return false;
+        
+        let isM = cat === 'Manhã';
+        let isT = cat === 'Tarde';
+        let isN = cat === 'Noite';
+
+        if (cat === 'Legenda Especial' || shiftCode.includes('ST6 SN12') || shiftCode.includes('SM6 ST6')) {
+            if (shiftCode.includes('SM6 ST6')) {
+                 isM = true; isT = true;
+            } else if (shiftCode.includes('ST6 SN12')) {
+                 isT = true; isN = true;
+            } else {
+                 if (shiftCode.includes('M')) isM = true;
+                 if (shiftCode.includes('T') && !shiftCode.includes('ST6 SN12')) isT = true;
+                 if (shiftCode.includes('N')) isN = true;
+            }
+        }
+        
+        if (checkPeriod === 'Manhã') return isM;
+        if (checkPeriod === 'Tarde') return isT;
+        if (checkPeriod === 'Noite') return isN;
+        return false;
+    };
+
     // Filtered Employees
     const filteredEmployees = useMemo(() => {
-        let emps = roleFilter === 'Todos' ? employees : employees.filter(e => e.role === roleFilter);
+        let emps = employees;
+        if (employeeFilter !== 'Todos') {
+            emps = emps.filter(e => e.id === employeeFilter);
+        } else if (roleFilter !== 'Todos') {
+            emps = emps.filter(e => e.role === roleFilter);
+        }
         
         // If period is filtered, only show employees who are assigned in that period during the selected month
         if (periodFilter !== 'Todos') {
@@ -90,8 +121,8 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
                     .filter(a => {
                         const shiftDef = shiftDefs[a.shiftCode];
                         const cat = a.category || shiftDef?.category;
-                        if (periodFilter === 'Manhã' || periodFilter === 'Tarde') {
-                            if (a.shiftCode.includes('SM6 ST6')) return true;
+                        if (periodFilter === 'Manhã' || periodFilter === 'Tarde' || periodFilter === 'Noite') {
+                            return isShiftInPeriod(a.shiftCode, cat, periodFilter as any);
                         }
                         if (periodFilter === 'Legenda Especial' && cat === 'Legenda Especial') return true;
                         if (periodFilter === 'Afastamento' && cat === 'Afastamento') return true;
@@ -118,7 +149,9 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
                    cat !== 'Legenda Especial'; // TPDs não entram em carga horária normal
         });
         
-        if (roleFilter !== 'Todos') {
+        if (employeeFilter !== 'Todos') {
+            filtered = filtered.filter(a => a.employeeId === employeeFilter);
+        } else if (roleFilter !== 'Todos') {
             filtered = filtered.filter(a => {
                 const emp = employees.find(e => e.id === a.employeeId);
                 return emp?.role === roleFilter;
@@ -129,8 +162,8 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
             filtered = filtered.filter(a => {
                 const shiftDef = shiftDefs[a.shiftCode];
                 const cat = a.category || shiftDef?.category;
-                if (periodFilter === 'Manhã' || periodFilter === 'Tarde') {
-                    if (a.shiftCode.includes('SM6 ST6')) return true;
+                if (periodFilter === 'Manhã' || periodFilter === 'Tarde' || periodFilter === 'Noite') {
+                    return isShiftInPeriod(a.shiftCode, cat, periodFilter as any);
                 }
                 return cat === periodFilter;
             });
@@ -149,45 +182,60 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
         return acc + dur;
     }, 0);
     
+    // Base month assignments preserving category for stats, but applying employee/role filters
+    const baseMonthAssignments = useMemo(() => {
+        let monthAssigns = assignments.filter(a => monthDateStrings.has(a.date));
+        
+        if (employeeFilter !== 'Todos') {
+            monthAssigns = monthAssigns.filter(a => a.employeeId === employeeFilter);
+        } else if (roleFilter !== 'Todos') {
+            monthAssigns = monthAssigns.filter(a => {
+                const emp = employees.find(e => e.id === a.employeeId);
+                return emp?.role === roleFilter;
+            });
+        }
+        return monthAssigns;
+    }, [assignments, monthDateStrings, employeeFilter, roleFilter, employees]);
+
     // Banco de Horas stats for the selected month
     const bankStats = useMemo(() => {
-        const monthBanks = assignments.filter(a => {
+        const monthBanks = baseMonthAssignments.filter(a => {
             const def = shiftDefs[a.shiftCode];
             const cat = a.category || def?.category;
-            return monthDateStrings.has(a.date) && cat === 'Banco de Horas';
+            return cat === 'Banco de Horas';
         });
         
         const positive = monthBanks.filter(a => a.duration > 0).reduce((sum, a) => sum + a.duration, 0);
         const negative = monthBanks.filter(a => a.duration < 0).reduce((sum, a) => sum + a.duration, 0);
         
         return { positive, negative, total: positive + negative };
-    }, [assignments, monthDateStrings, shiftDefs]);
+    }, [baseMonthAssignments, shiftDefs]);
 
     // TPD stats
     const tpdStats = useMemo(() => {
-         const monthTpds = assignments.filter(a => {
+         const monthTpds = baseMonthAssignments.filter(a => {
             const def = shiftDefs[a.shiftCode];
             const cat = a.category || def?.category;
-            return monthDateStrings.has(a.date) && cat === 'Legenda Especial';
+            return cat === 'Legenda Especial';
         });
         return {
             count: monthTpds.length,
             hours: monthTpds.reduce((sum, a) => sum + a.duration, 0)
         };
-    }, [assignments, monthDateStrings, shiftDefs]);
+    }, [baseMonthAssignments, shiftDefs]);
 
     // Afastamento stats
     const absenceStats = useMemo(() => {
-        const monthAbsences = assignments.filter(a => {
+        const monthAbsences = baseMonthAssignments.filter(a => {
             const def = shiftDefs[a.shiftCode];
             const cat = a.category || def?.category;
-            return monthDateStrings.has(a.date) && cat === 'Afastamento';
+            return cat === 'Afastamento';
         });
         return {
              count: monthAbsences.length,
              hours: monthAbsences.reduce((sum, a) => sum + a.duration, 0)
         };
-    }, [assignments, monthDateStrings, shiftDefs]);
+    }, [baseMonthAssignments, shiftDefs]);
 
     // Pendencies calculated monthly
     const pendencies = useMemo(() => {
@@ -207,7 +255,7 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
             // Allow a small variation (e.g., +/- 6 hours) before flagging as a pendency
             // since shifts are often in multiples of 6 or 12 and might not perfectly match
             // the exact mathematical monthly expectation.
-            const isPendency = Math.abs(diff) > 6;
+            const isPendency = e.isTpdOnly ? false : Math.abs(diff) > 6;
             
             return {
                 employee: e,
@@ -220,7 +268,19 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
         }).filter(p => p.isPendency);
     }, [filteredEmployees, assignments, daysInMonth, monthDateStrings]);
     
-    // 2. Prepare Chart Data (Group by Role)
+    // Define Category Colors for individual employee view
+    const categoryColors: Record<string, string> = {
+        'Manhã': '#eab308', // yellow-500
+        'Tarde': '#f97316', // orange-500
+        'Noite': '#1e3a8a', // blue-900
+        'Afastamento': '#ef4444', // red-500
+        'Atividade Não Assistencial': '#d946ef', // fuchsia-500
+        'Legenda Especial': '#8b5cf6', // purple-500
+        'Banco de Horas': '#10b981', // emerald-500
+        'Outros': '#9ca3af' // gray-400
+    };
+
+    // 2. Prepare Chart Data
     const chartData = useMemo(() => {
         return daysInMonth.map(day => {
             const y = day.getFullYear();
@@ -230,8 +290,10 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
             
             let dayAssignments = assignments.filter(a => a.date === dateStr && a.shiftCode !== 'BLK');
             
-            // Apply Role Filter
-            if (roleFilter !== 'Todos') {
+            // Apply Employee/Role Filter
+            if (employeeFilter !== 'Todos') {
+                dayAssignments = dayAssignments.filter(a => a.employeeId === employeeFilter);
+            } else if (roleFilter !== 'Todos') {
                 dayAssignments = dayAssignments.filter(a => {
                     const emp = employees.find(e => e.id === a.employeeId);
                     const shiftDef = shiftDefs[a.shiftCode];
@@ -245,71 +307,95 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
                 dayAssignments = dayAssignments.filter(a => {
                     const shiftDef = shiftDefs[a.shiftCode];
                     const cat = a.category || shiftDef?.category;
-                    if (periodFilter === 'Manhã' || periodFilter === 'Tarde') {
-                        if (a.shiftCode.includes('SM6 ST6')) return true;
+                    if (periodFilter === 'Manhã' || periodFilter === 'Tarde' || periodFilter === 'Noite') {
+                        return isShiftInPeriod(a.shiftCode, cat, periodFilter as any);
                     }
                     return cat === periodFilter;
                 });
             }
 
             const roleCounts: Record<string, number> = {};
+            const catCounts: Record<string, number> = {};
+
             Object.keys(professionalCategories).forEach(r => roleCounts[r] = 0);
+            roleCounts['Afastamento'] = 0; // Ensure Afastamento exists
+            
+            Object.keys(categoryColors).forEach(c => catCounts[c] = 0);
 
             const uniqueEmployeesPerRole: Record<string, Set<string>> = {};
             Object.keys(professionalCategories).forEach(r => uniqueEmployeesPerRole[r] = new Set());
+            uniqueEmployeesPerRole['Afastamento'] = new Set();
 
             dayAssignments.forEach(assign => {
                 const emp = employees.find(e => e.id === assign.employeeId);
                 const shiftDef = shiftDefs[assign.shiftCode];
                 if (emp && shiftDef) {
                     const cat = assign.category || shiftDef.category;
-                    // Tratamento de BH Negativo como Afastamento para visualização no gráfico
-                    const isAbsence = cat === 'Afastamento' || 
-                                    (cat === 'Banco de Horas' && assign.duration < 0);
+                    const isAbsence = cat === 'Afastamento' || cat === 'Atividade Não Assistencial' || (cat === 'Banco de Horas' && assign.duration < 0);
                     
-                    let roleKey = isAbsence ? 'Afastamento' : emp.role;
-                    if (uniqueEmployeesPerRole[roleKey] !== undefined) {
-                        uniqueEmployeesPerRole[roleKey].add(assign.employeeId);
-                        
-                        if (chartMetric === 'hours') {
-                             // If it's the combined shift and we filtered by Manhã or Tarde, 
-                             // it should probably count 6h instead of 12h in the chart. But what if it's "Todos"? Then 12h.
-                             let dur = assign.duration;
-                             if (assign.shiftCode.includes('SM6 ST6') && (periodFilter === 'Manhã' || periodFilter === 'Tarde')) {
-                                  dur = 6;
-                             }
-                             roleCounts[roleKey] += dur;
+                    if (employeeFilter !== 'Todos') {
+                        let finalCat = 'Outros';
+                        if (['Manhã', 'Tarde', 'Noite', 'Afastamento', 'Atividade Não Assistencial', 'Legenda Especial', 'Banco de Horas'].includes(cat)) {
+                            finalCat = cat;
+                        }
+                        // We map Atividade Não Assistencial out of "Afastamento" for the individual breakdown if we want, or keep it distinct
+                        // Actually, if isAbsence is true, we override it to Afastamento for the general view, but what about finalCat here?
+                        // Let's keep finalCat as the real category, unless it's a negative Banco de Horas.
+                        if (cat === 'Banco de Horas' && assign.duration < 0) finalCat = 'Afastamento';
+
+                        let dur = Math.abs(assign.duration); // Use absolute for graph
+                        if (assign.shiftCode.includes('SM6 ST6') && (periodFilter === 'Manhã' || periodFilter === 'Tarde')) {
+                            dur = 6;
+                        }
+                        catCounts[finalCat] += dur;
+                    } else {
+                        let roleKey = isAbsence ? 'Afastamento' : emp.role;
+                        if (uniqueEmployeesPerRole[roleKey] !== undefined) {
+                            uniqueEmployeesPerRole[roleKey].add(assign.employeeId);
+                            
+                            if (chartMetric === 'hours') {
+                                let dur = assign.duration;
+                                if (assign.shiftCode.includes('SM6 ST6') && (periodFilter === 'Manhã' || periodFilter === 'Tarde')) {
+                                    dur = 6;
+                                }
+                                roleCounts[roleKey] += dur;
+                            }
                         }
                     }
                 }
             });
 
-            if (chartMetric === 'professionals') {
+            if (chartMetric === 'professionals' && employeeFilter === 'Todos') {
                 Object.keys(professionalCategories).forEach(r => {
                     roleCounts[r] = uniqueEmployeesPerRole[r].size;
                 });
+                roleCounts['Afastamento'] = uniqueEmployeesPerRole['Afastamento'].size;
             }
 
             return {
                 date: dateStr,
                 displayDate: day.getDate().toString(),
                 fullDisplayDate: day.toLocaleDateString('pt-BR'),
-                ...roleCounts
+                ...(employeeFilter !== 'Todos' ? catCounts : roleCounts)
             };
         });
-    }, [daysInMonth, assignments, employees, roleFilter, periodFilter, chartMetric]);
+    }, [daysInMonth, assignments, employees, roleFilter, periodFilter, chartMetric, employeeFilter]);
 
     // Handle Click on Bar
     const handleBarClick = (data: any, roleKey: string) => {
         const dateStr = data.date;
         let dayAssignments = assignments.filter(a => a.date === dateStr && a.shiftCode !== 'BLK');
         
+        if (employeeFilter !== 'Todos') {
+            dayAssignments = dayAssignments.filter(a => a.employeeId === employeeFilter);
+        }
+
         if (periodFilter !== 'Todos') {
             dayAssignments = dayAssignments.filter(a => {
                 const shiftDef = shiftDefs[a.shiftCode];
                 const cat = a.category || shiftDef?.category;
-                if (periodFilter === 'Manhã' || periodFilter === 'Tarde') {
-                    if (a.shiftCode.includes('SM6 ST6')) return true;
+                if (periodFilter === 'Manhã' || periodFilter === 'Tarde' || periodFilter === 'Noite') {
+                    return isShiftInPeriod(a.shiftCode, cat, periodFilter as any);
                 }
                 return cat === periodFilter;
             });
@@ -320,14 +406,35 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
                 const emp = employees.find(e => e.id === assign.employeeId);
                 const shiftDef = shiftDefs[assign.shiftCode];
                 if (emp && shiftDef) {
-                    const isAbsence = shiftDef.category === 'Afastamento' || 
-                                    (shiftDef.category === 'Banco de Horas' && assign.duration < 0);
+                    const cat = assign.category || shiftDef.category;
+                    const isAbsence = cat === 'Afastamento' || cat === 'Atividade Não Assistencial' || (cat === 'Banco de Horas' && assign.duration < 0);
                     
-                    let rKey = isAbsence ? 'Afastamento' : emp.role;
-                    if (rKey === roleKey) {
+                    let isMatch = false;
+
+                    if (employeeFilter !== 'Todos') {
+                        // roleKey is a Category
+                        let finalCat = 'Outros';
+                        if (['Manhã', 'Tarde', 'Noite', 'Afastamento', 'Atividade Não Assistencial', 'Legenda Especial', 'Banco de Horas'].includes(cat)) {
+                            finalCat = cat;
+                        }
+                        if (cat === 'Banco de Horas' && assign.duration < 0) finalCat = 'Afastamento';
+
+                        if (finalCat === roleKey) {
+                            isMatch = true;
+                        }
+                    } else {
+                        // roleKey is a Role or Afastamento
+                        let rKey = isAbsence ? 'Afastamento' : emp.role;
+                        if (rKey === roleKey) {
+                            isMatch = true;
+                        }
+                    }
+                    
+                    if (isMatch) {
                         return {
                             name: emp.name,
                             shiftCode: assign.shiftCode,
+                            category: cat,
                             duration: assign.duration,
                             color: emp.colorIdentifier
                         };
@@ -376,9 +483,16 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
                                                 </div>
                                                 <span className="font-semibold text-gray-800">{s.name}</span>
                                             </div>
-                                            <div className="flex flex-col items-end">
-                                                <span className="text-sm font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded">{s.shiftCode}</span>
-                                                <span className="text-xs text-gray-400">{s.duration}h</span>
+                                            <div className="flex flex-col items-end gap-1">
+                                                <div className="flex items-center gap-2">
+                                                    {s.category && !['Manhã', 'Tarde', 'Noite', 'Afastamento', 'Legenda Especial', 'Banco de Horas'].includes(drillDown.category) && (
+                                                        <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">
+                                                            {s.category}
+                                                        </span>
+                                                    )}
+                                                    <span className="text-sm font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded">{s.shiftCode}</span>
+                                                </div>
+                                                <span className="text-xs text-gray-500 font-medium">{s.duration}h</span>
                                             </div>
                                         </div>
                                     ))}
@@ -425,11 +539,31 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
                         </select>
                     </div>
                     <div className="flex-1 md:w-48">
+                        <label className="block text-xs font-semibold text-gray-500 mb-1 flex items-center gap-1"><UserIcon size={12}/> Servidor</label>
+                        <select 
+                            className="w-full border-gray-300 rounded-md shadow-sm focus:ring-gdf-primary focus:border-gdf-primary text-sm p-2 border bg-white"
+                            value={employeeFilter}
+                            onChange={(e) => {
+                                setEmployeeFilter(e.target.value);
+                                if (e.target.value !== 'Todos') setRoleFilter('Todos'); // Reset role when specific employee is chosen
+                            }}
+                        >
+                            <option value="Todos">Todos os Servidores</option>
+                            {[...employees].sort((a,b) => (a.name || '').localeCompare(b.name || '')).map(emp => (
+                                <option key={emp.id} value={emp.id}>{emp.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="flex-1 md:w-48">
                         <label className="block text-xs font-semibold text-gray-500 mb-1">Categoria Profissional</label>
                         <select 
                             className="w-full border-gray-300 rounded-md shadow-sm focus:ring-gdf-primary focus:border-gdf-primary text-sm p-2 border bg-white"
                             value={roleFilter}
-                            onChange={(e) => setRoleFilter(e.target.value)}
+                            onChange={(e) => {
+                                setRoleFilter(e.target.value);
+                                if (e.target.value !== 'Todos') setEmployeeFilter('Todos');
+                            }}
+                            disabled={employeeFilter !== 'Todos'}
                         >
                             <option value="Todos">Todas as Categorias</option>
                             {Object.keys(professionalCategories).map(role => (
@@ -574,21 +708,36 @@ const Dashboard: React.FC<DashboardProps> = ({ employees, assignments, startDate
                             />
                             <Legend wrapperStyle={{paddingTop: '20px'}}/>
                             
-                            {/* Render a Bar for each Role */}
-                            {Object.keys(professionalCategories).map((role) => (
-                                (roleFilter === 'Todos' || roleFilter === role) && (
+                            {/* Render bars depending on employeeFilter state */}
+                            {employeeFilter !== 'Todos' ? (
+                                Object.keys(categoryColors).map((cat) => (
                                     <Bar 
-                                        key={role} 
-                                        dataKey={role} 
-                                        name={role}
+                                        key={cat} 
+                                        dataKey={cat} 
+                                        name={cat}
                                         stackId="a"
-                                        fill={professionalCategories[role] || '#000000'}
+                                        fill={categoryColors[cat]}
                                         radius={[0, 0, 0, 0]}
-                                        onClick={(data) => handleBarClick(data, role)}
+                                        onClick={(data) => handleBarClick(data, cat)}
                                         cursor="pointer"
                                     />
-                                )
-                            ))}
+                                ))
+                            ) : (
+                                Object.keys(professionalCategories).map((role) => (
+                                    (roleFilter === 'Todos' || roleFilter === role) && (
+                                        <Bar 
+                                            key={role} 
+                                            dataKey={role} 
+                                            name={role}
+                                            stackId="a"
+                                            fill={professionalCategories[role] || '#000000'}
+                                            radius={[0, 0, 0, 0]}
+                                            onClick={(data) => handleBarClick(data, role)}
+                                            cursor="pointer"
+                                        />
+                                    )
+                                ))
+                            )}
                         </BarChart>
                     </ResponsiveContainer>
                 </div>

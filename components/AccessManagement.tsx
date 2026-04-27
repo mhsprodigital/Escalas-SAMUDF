@@ -1,21 +1,47 @@
 import React, { useState, useEffect } from 'react';
-import { SystemUser, UserRole } from '../types';
-import { subscribeToSystemUsers, saveSystemUser, deleteSystemUser } from '../services/storageService';
-import { Shield, UserPlus, Trash2, Mail, User as UserIcon, CheckCircle, AlertCircle } from 'lucide-react';
+import { SystemUser, UserRole, UnitStructure } from '../types';
+import { subscribeToSystemUsers, saveSystemUser, deleteSystemUser, subscribeToSettings } from '../services/storageService';
+import { Shield, UserPlus, Trash2, Mail, User as UserIcon, CheckCircle, AlertCircle, Edit2, X, Building2 } from 'lucide-react';
+import ConfirmModal from './ConfirmModal';
 
 const AccessManagement: React.FC = () => {
     const [users, setUsers] = useState<SystemUser[]>([]);
+    const [units, setUnits] = useState<UnitStructure[]>([]);
     const [newEmail, setNewEmail] = useState('');
     const [newName, setNewName] = useState('');
     const [newRole, setNewRole] = useState<UserRole>('ADMIN');
+    const [newUnitAccess, setNewUnitAccess] = useState<string>('');
     const [isLoading, setIsLoading] = useState(false);
     const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+    
+    const [editingEmail, setEditingEmail] = useState<string | null>(null);
+    const [editRole, setEditRole] = useState<UserRole>('VIEWER');
+    const [editUnitAccess, setEditUnitAccess] = useState<string>('');
+
+    // Confirmation Modal State
+    const [confirmModal, setConfirmModal] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        onConfirm: () => void;
+    }>({
+        isOpen: false,
+        title: '',
+        message: '',
+        onConfirm: () => {}
+    });
 
     useEffect(() => {
-        const unsubscribe = subscribeToSystemUsers((data) => {
+        const unsubscribeUsers = subscribeToSystemUsers((data) => {
             setUsers(data);
         });
-        return () => unsubscribe();
+        const unsubscribeSettings = subscribeToSettings((data) => {
+            if (data?.units) setUnits(data.units);
+        });
+        return () => {
+            unsubscribeUsers();
+            unsubscribeSettings();
+        };
     }, []);
 
     const handleAddUser = async (e: React.FormEvent) => {
@@ -31,12 +57,14 @@ const AccessManagement: React.FC = () => {
                 email: newEmail.toLowerCase().trim(),
                 displayName: newName.trim() || 'Usuário Convidado',
                 role: newRole,
+                unitAccess: newUnitAccess || undefined,
                 createdAt: new Date().toISOString()
             };
 
             await saveSystemUser(newUser);
             setNewEmail('');
             setNewName('');
+            setNewUnitAccess('');
             setMessage({ text: 'Acesso liberado com sucesso!', type: 'success' });
             setTimeout(() => setMessage(null), 3000);
         } catch (error) {
@@ -47,13 +75,48 @@ const AccessManagement: React.FC = () => {
         }
     };
 
-    const handleDelete = async (email: string) => {
-        if (!confirm(`Deseja realmente remover o acesso de ${email}?`)) return;
+    const handleDelete = (email: string) => {
+        setConfirmModal({
+            isOpen: true,
+            title: 'Remover Acesso',
+            message: `Deseja realmente remover o acesso de ${email}?`,
+            onConfirm: async () => {
+                try {
+                    await deleteSystemUser(email);
+                    setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                } catch (error) {
+                    console.error('Erro ao deletar usuário:', error);
+                    // Standard message for UI consistency
+                    setMessage({ text: 'Erro ao excluir acesso.', type: 'error' });
+                    setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                }
+            }
+        });
+    };
+
+    const handleStartEdit = (user: SystemUser) => {
+        setEditingEmail(user.email);
+        setEditRole(user.role);
+        setEditUnitAccess(user.unitAccess || '');
+    };
+
+    const handleSaveEdit = async (user: SystemUser) => {
+        setIsLoading(true);
         try {
-            await deleteSystemUser(email);
-        } catch (error) {
-            console.error('Erro ao deletar usuário:', error);
-            alert('Erro ao excluir acesso.');
+            const updatedUser: SystemUser = {
+                ...user,
+                role: editRole,
+                unitAccess: editUnitAccess || undefined
+            };
+            await saveSystemUser(updatedUser);
+            setEditingEmail(null);
+            setMessage({ text: 'Acesso alterado com sucesso!', type: 'success' });
+            setTimeout(() => setMessage(null), 3000);
+        } catch(error) {
+            console.error('Erro ao editar usuário', error);
+            alert('Erro ao editar acesso.');
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -71,7 +134,7 @@ const AccessManagement: React.FC = () => {
                 </div>
 
                 <div className="p-6">
-                    <form onSubmit={handleAddUser} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                    <form onSubmit={handleAddUser} className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
                         <div className="md:col-span-1">
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">E-mail (Google)</label>
                             <div className="relative">
@@ -114,7 +177,21 @@ const AccessManagement: React.FC = () => {
                             </select>
                         </div>
 
-                        <div>
+                        <div className="md:col-span-1">
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1"><Building2 size={12}/> Núcleo (Acesso)</label>
+                            <select
+                                value={newUnitAccess}
+                                onChange={(e) => setNewUnitAccess(e.target.value)}
+                                className="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gdf-primary focus:outline-none"
+                            >
+                                <option value="">Todos (Acesso Global)</option>
+                                {units.map(u => (
+                                    <option key={u.id} value={u.name}>{u.name}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="md:col-span-1">
                             <button
                                 type="submit"
                                 disabled={isLoading}
@@ -147,6 +224,7 @@ const AccessManagement: React.FC = () => {
                             <tr>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Usuário</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Nível</th>
+                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Núcleo</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Data Liberação</th>
                                 <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase">Ações</th>
                             </tr>
@@ -158,28 +236,76 @@ const AccessManagement: React.FC = () => {
                                         <div className="text-sm font-bold text-gray-900">{user.displayName}</div>
                                         <div className="text-xs text-gray-500">{user.email}</div>
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <span className={`px-2 py-1 text-xs font-bold rounded-full ${
-                                            user.role === 'ADMIN' ? 'bg-purple-100 text-purple-700' : 
-                                            user.role === 'EDITOR' ? 'bg-blue-100 text-blue-700' : 
-                                            'bg-gray-100 text-gray-600'
-                                        }`}>
-                                            {user.role}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                        {new Date(user.createdAt).toLocaleDateString('pt-BR')}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-right">
-                                        {user.email !== 'mhs.pro.digital@gmail.com' && (
-                                            <button 
-                                                onClick={() => handleDelete(user.email)}
-                                                className="text-gray-400 hover:text-red-500 transition-colors p-2 rounded-full hover:bg-red-50"
-                                            >
-                                                <Trash2 size={18} />
-                                            </button>
-                                        )}
-                                    </td>
+                                    {editingEmail === user.email ? (
+                                        <>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <select
+                                                    value={editRole}
+                                                    onChange={(e) => setEditRole(e.target.value as UserRole)}
+                                                    className="w-full px-2 py-1 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gdf-primary"
+                                                >
+                                                    <option value="ADMIN">Administrador</option>
+                                                    <option value="EDITOR">Editor</option>
+                                                    <option value="VIEWER">Observador</option>
+                                                </select>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <select
+                                                    value={editUnitAccess}
+                                                    onChange={(e) => setEditUnitAccess(e.target.value)}
+                                                    className="w-full px-2 py-1 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gdf-primary"
+                                                >
+                                                    <option value="">Todos</option>
+                                                    {units.map(u => (
+                                                        <option key={u.id} value={u.name}>{u.name}</option>
+                                                    ))}
+                                                </select>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                {new Date(user.createdAt).toLocaleDateString('pt-BR')}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-right space-x-2">
+                                                <button onClick={() => setEditingEmail(null)} className="text-gray-500 hover:text-gray-700 bg-gray-100 p-2 rounded-full"><X size={16} /></button>
+                                                <button onClick={() => handleSaveEdit(user)} className="text-green-600 hover:text-green-800 bg-green-50 p-2 rounded-full"><CheckCircle size={16} /></button>
+                                            </td>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <span className={`px-2 py-1 text-xs font-bold rounded-full ${
+                                                    user.role === 'ADMIN' ? 'bg-purple-100 text-purple-700' : 
+                                                    user.role === 'EDITOR' ? 'bg-blue-100 text-blue-700' : 
+                                                    'bg-gray-100 text-gray-600'
+                                                }`}>
+                                                    {user.role}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                                {user.unitAccess ? <span className="font-medium bg-blue-50 text-blue-700 px-2 py-1 rounded">{user.unitAccess}</span> : <span className="text-gray-400 italic">Todos</span>}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                {new Date(user.createdAt).toLocaleDateString('pt-BR')}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-right">
+                                                {user.email !== 'mhs.pro.digital@gmail.com' && (
+                                                    <>
+                                                        <button 
+                                                            onClick={() => handleStartEdit(user)}
+                                                            className="text-gray-400 hover:text-blue-500 transition-colors p-2 rounded-full hover:bg-blue-50 mr-2"
+                                                        >
+                                                            <Edit2 size={18} />
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => handleDelete(user.email)}
+                                                            className="text-gray-400 hover:text-red-500 transition-colors p-2 rounded-full hover:bg-red-50"
+                                                        >
+                                                            <Trash2 size={18} />
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </td>
+                                        </>
+                                    )}
                                 </tr>
                             ))}
                             {users.length === 0 && (
@@ -206,6 +332,14 @@ const AccessManagement: React.FC = () => {
                     <li>Certifique-se de que o e-mail está escrito corretamente, sem espaços extras.</li>
                 </ul>
             </div>
+
+            <ConfirmModal 
+                isOpen={confirmModal.isOpen}
+                title={confirmModal.title}
+                message={confirmModal.message}
+                onConfirm={confirmModal.onConfirm}
+                onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+            />
         </div>
     );
 };

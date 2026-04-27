@@ -60,6 +60,7 @@ const RulesView: React.FC = () => {
             "Geral (Administrativo)",
             "Afastamentos & Licenças",
             "Banco de Horas",
+            "Atividades Externas & Cessão",
             "Legendas Especiais"
         ];
         groupOrder.forEach(g => groups[g] = {});
@@ -69,6 +70,7 @@ const RulesView: React.FC = () => {
             let type = "Geral (Administrativo)";
             if (def.category === 'Legenda Especial') type = "Legendas Especiais";
             else if (def.category === 'Afastamento') type = "Afastamentos & Licenças";
+            else if (def.category === 'Atividade Não Assistencial') type = "Atividades Externas & Cessão";
             else if (def.code.startsWith('AM') || def.code.startsWith('AT') || def.code.startsWith('AN')) type = "Ambulatório";
             else if (def.code.startsWith('CM') || def.code.startsWith('CT') || def.code.startsWith('CN')) type = "Centro Cirúrgico";
             else if (def.code.startsWith('EM') || def.code.startsWith('ET') || def.code.startsWith('EN')) type = "Enfermaria";
@@ -304,6 +306,7 @@ const RulesView: React.FC = () => {
                                     <option value="Bloqueio">Bloqueio</option>
                                     <option value="Legenda Especial">Legenda Especial</option>
                                     <option value="Banco de Horas">Banco de Horas</option>
+                                    <option value="Atividade Não Assistencial">Atividade Não Assistencial</option>
                                 </select>
                             </div>
                         </div>
@@ -364,6 +367,7 @@ const RulesView: React.FC = () => {
                                                                     <option value="Bloqueio">Bloqueio</option>
                                                                     <option value="Legenda Especial">Legenda Especial</option>
                                                                     <option value="Banco de Horas">Banco de Horas</option>
+                                                                    <option value="Atividade Não Assistencial">Atividade Não Assistencial</option>
                                                                 </select>
                                                             </div>
                                                             <div className="col-span-2 md:col-span-1 flex justify-end gap-1 pb-0.5">

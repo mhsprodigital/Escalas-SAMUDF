@@ -666,7 +666,7 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
                                 >
                                     <option value="">Selecione um evento...</option>
                                     {Object.values(shiftDefs)
-                                        .filter((def: ShiftDefinition) => def && (def.category === 'Afastamento' || def.category === 'Legenda Especial'))
+                                        .filter((def: ShiftDefinition) => def && (def.category === 'Afastamento' || def.category === 'Legenda Especial' || def.category === 'Atividade Não Assistencial'))
                                         .map((def: ShiftDefinition) => (
                                             <option key={def.code} value={def.code}>{def.label} ({def.hours}h)</option>
                                         ))
@@ -881,12 +881,17 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
                                     <tr className="hover:bg-blue-50 transition-colors group">
                                         <td className="sticky left-0 bg-white group-hover:bg-blue-50 z-20 border-r border-gray-200 px-4 py-3 align-middle">
                                             <div className="flex items-center">
-                                                <div className={`w-8 h-8 rounded-full ${emp.colorIdentifier} flex items-center justify-center text-white text-xs font-bold mr-3`}>
-                                                    {emp.name.charAt(0)}
-                                                </div>
                                                 <div>
-                                                    <div className="font-semibold text-gray-900 truncate w-40">{emp.name}</div>
-                                                    <div className="text-[10px] text-gray-500">{emp.role}</div>
+                                                    <div className="font-semibold text-gray-900 leading-tight whitespace-normal break-words max-w-[180px] flex items-center gap-1 group-hover:text-gdf-primary transition-colors">
+                                                        {emp.name}
+                                                        {emp.isTpdOnly && (
+                                                            <span className="bg-yellow-100 text-yellow-800 text-[9px] px-1 py-0.5 rounded border border-yellow-200 font-bold shrink-0" title="Somente TPD (Hora Extra)">TPD</span>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex flex-col mt-0.5">
+                                                        <div className="text-[10px] font-medium text-gray-500 uppercase tracking-widest">{emp.role}</div>
+                                                        <div className="text-[9px] text-gdf-primary font-bold opacity-70">MAT: {emp.matricula || '---'}</div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </td>

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { UnitStructure, ShiftAssignment, Employee, ShiftDefinition, Vehicle, Sector } from '../types';
 import { subscribeToSettings, saveSettings, getEmployees, getAssignments, subscribeToVehicles, subscribeToSectors, saveVehicle, deleteVehicle, saveSector, deleteSector, saveEmployee } from '../services/storageService';
-import { Plus, Trash2, Layers, Briefcase, Clock, Download, Calendar, Truck, MapPin, Lock, Unlock } from 'lucide-react';
+import { Plus, Trash2, Layers, Briefcase, Clock, Download, Calendar, Truck, MapPin, Lock, Unlock, X, Edit2 } from 'lucide-react';
+import ConfirmModal from './ConfirmModal';
 
 interface SettingsData {
     rulesTitle: string;
@@ -34,9 +35,30 @@ const Settings: React.FC<SettingsProps> = ({ canEdit, professionalCategories, se
     const [newVehicleName, setNewVehicleName] = useState('');
     const [newVehiclePlate, setNewVehiclePlate] = useState('');
     
-    // New Sector State
-    const [newSectorName, setNewSectorName] = useState('');
+    // Unit (Nucleo) State
+    const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
+    const [newUnitName, setNewUnitName] = useState('');
+    const [newUnitSectorName, setNewUnitSectorName] = useState('');
     
+    // Editing state
+    const [editingUnitId, setEditingUnitId] = useState<string | null>(null);
+    const [editingUnitValue, setEditingUnitValue] = useState('');
+    const [editingSector, setEditingSector] = useState<{unitId: string, oldName: string} | null>(null);
+    const [editingSectorValue, setEditingSectorValue] = useState('');
+    
+    // Deletion Modal State
+    const [confirmModal, setConfirmModal] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        onConfirm: () => void;
+    }>({
+        isOpen: false,
+        title: '',
+        message: '',
+        onConfirm: () => {}
+    });
+
     const [newHour, setNewHour] = useState<string>('');
     
     // CSV Export State
@@ -80,15 +102,97 @@ const Settings: React.FC<SettingsProps> = ({ canEdit, professionalCategories, se
         await saveVehicle({ ...vehicle, isBlocked: !vehicle.isBlocked });
     };
 
-    // --- Sector Handlers ---
-    const handleAddSector = async () => {
-        if (!newSectorName.trim()) return;
-        const newSector: Sector = {
+    // --- Unit/Sector Handlers ---
+    const handleAddUnit = async () => {
+        if (!newUnitName.trim()) return;
+        const newUnit: UnitStructure = {
             id: Date.now().toString(),
-            name: newSectorName
+            name: newUnitName.trim(),
+            sectors: []
         };
-        await saveSector(newSector);
-        setNewSectorName('');
+        const updatedUnits = [...(settings.units || []), newUnit];
+        await saveSettings({ ...settings, units: updatedUnits });
+        setNewUnitName('');
+    };
+
+    const handleDeleteUnit = (unitId: string) => {
+        const unit = settings.units.find(u => u.id === unitId);
+        if (!unit) return;
+
+        setConfirmModal({
+            isOpen: true,
+            title: 'Remover Núcleo',
+            message: `Deseja realmente remover o núcleo "${unit.name}"? Isso afetará os servidores vinculados a ele.`,
+            onConfirm: async () => {
+                const updatedUnits = settings.units.filter(u => u.id !== unitId);
+                await saveSettings({ ...settings, units: updatedUnits });
+                if (selectedUnitId === unitId) setSelectedUnitId(null);
+                setConfirmModal(prev => ({ ...prev, isOpen: false }));
+            }
+        });
+    };
+
+    const handleEditUnit = async (unitId: string) => {
+        if (!editingUnitValue.trim()) {
+            setEditingUnitId(null);
+            return;
+        }
+        const updatedUnits = settings.units.map(u => {
+            if (u.id === unitId) {
+                return { ...u, name: editingUnitValue.trim() };
+            }
+            return u;
+        });
+        await saveSettings({ ...settings, units: updatedUnits });
+        setEditingUnitId(null);
+        setEditingUnitValue('');
+    };
+
+    const handleAddUnitSector = async (unitId: string) => {
+        if (!newUnitSectorName.trim()) return;
+        const updatedUnits = settings.units.map(u => {
+            if (u.id === unitId) {
+                return { ...u, sectors: [...u.sectors, newUnitSectorName.trim()] };
+            }
+            return u;
+        });
+        await saveSettings({ ...settings, units: updatedUnits });
+        setNewUnitSectorName('');
+    };
+
+    const handleDeleteUnitSector = (unitId: string, sectorName: string) => {
+        setConfirmModal({
+            isOpen: true,
+            title: 'Remover Setor',
+            message: `Deseja realmente remover o setor "${sectorName}"?`,
+            onConfirm: async () => {
+                const updatedUnits = settings.units.map(u => {
+                    if (u.id === unitId) {
+                        return { ...u, sectors: u.sectors.filter(s => s !== sectorName) };
+                    }
+                    return u;
+                });
+                await saveSettings({ ...settings, units: updatedUnits });
+                setConfirmModal(prev => ({ ...prev, isOpen: false }));
+            }
+        });
+    };
+
+    const handleEditSector = async (unitId: string, oldName: string) => {
+        if (!editingSectorValue.trim() || editingSectorValue.trim() === oldName) {
+            setEditingSector(null);
+            return;
+        }
+        const updatedUnits = settings.units.map(u => {
+            if (u.id === unitId) {
+                const updatedSectors = u.sectors.map(s => s === oldName ? editingSectorValue.trim() : s);
+                return { ...u, sectors: updatedSectors };
+            }
+            return u;
+        });
+        await saveSettings({ ...settings, units: updatedUnits });
+        setEditingSector(null);
+        setEditingSectorValue('');
     };
 
     // --- Hours Handlers ---
@@ -325,24 +429,24 @@ const Settings: React.FC<SettingsProps> = ({ canEdit, professionalCategories, se
                     </div>
                 </div>
 
-                {/* Column 2: Sectors Management */}
-                <div className="bg-white rounded-lg shadow border border-gray-200 p-6 h-full">
+                {/* Column 2: Units Management */}
+                <div className="bg-white rounded-lg shadow border border-gray-200 p-6 h-full flex flex-col">
                      <h3 className="font-semibold text-gray-700 mb-6 flex items-center gap-2 text-lg border-b pb-2">
-                        <MapPin size={20} className="text-gdf-secondary"/> Setores
+                        <MapPin size={20} className="text-gdf-secondary"/> Núcleos e Setores
                     </h3>
 
-                    <div>
+                    <div className="flex-1 flex flex-col min-h-0">
                         {canEdit && (
-                             <div className="flex gap-3 mb-6">
+                             <div className="flex gap-3 mb-4">
                                 <input
                                     type="text"
-                                    value={newSectorName}
-                                    onChange={(e) => setNewSectorName(e.target.value)}
-                                    placeholder="Ex: Sala Vermelha, UCIn..."
+                                    value={newUnitName}
+                                    onChange={(e) => setNewUnitName(e.target.value)}
+                                    placeholder="Nome do Novo Núcleo..."
                                     className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gdf-secondary focus:outline-none"
                                 />
                                 <button 
-                                    onClick={handleAddSector}
+                                    onClick={handleAddUnit}
                                     className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2 font-medium shadow-sm transition-colors"
                                 >
                                     <Plus size={18} />
@@ -350,32 +454,134 @@ const Settings: React.FC<SettingsProps> = ({ canEdit, professionalCategories, se
                             </div>
                         )}
 
-                        <div className="grid grid-cols-1 gap-2 max-h-[300px] overflow-y-auto pr-1">
-                            {sectors.map((sector) => (
-                                <div key={sector.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors">
-                                    <div className="flex items-center gap-3">
-                                        <div className="bg-white p-1.5 rounded border border-gray-200 text-gray-500">
-                                            <MapPin size={14}/>
-                                        </div>
-                                        <span className="text-sm font-medium text-gray-700">{sector.name}</span>
-                                    </div>
-                                    {canEdit && (
-                                        <button 
-                                            onClick={() => deleteSector(sector.id)}
-                                            className="text-gray-400 hover:text-red-500 p-1 rounded-full hover:bg-red-50 transition-colors"
-                                            title="Remover Setor"
+                        <div className="flex gap-4 flex-1 min-h-0 overflow-hidden">
+                            {/* Lista de Núcleos */}
+                            <div className="w-1/2 flex flex-col bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+                                <div className="bg-gray-100 px-3 py-2 text-xs font-bold text-gray-500 uppercase border-b border-gray-200">
+                                    Núcleos
+                                </div>
+                                <div className="overflow-y-auto flex-1 p-2 space-y-1">
+                                    {settings.units?.map(unit => (
+                                        <div 
+                                            key={unit.id} 
+                                            onClick={() => setSelectedUnitId(unit.id)}
+                                            className={`p-2 rounded flex justify-between items-center cursor-pointer transition-colors ${
+                                                selectedUnitId === unit.id ? 'bg-blue-100 text-blue-800 font-bold border-blue-200' : 'bg-white border-transparent hover:border-gray-200 text-gray-600'
+                                            } border group`}
                                         >
-                                            <Trash2 size={16} />
-                                        </button>
+                                            {editingUnitId === unit.id ? (
+                                                <input 
+                                                    autoFocus
+                                                    className="w-full bg-white border border-blue-400 rounded px-1 py-0.5 text-sm font-normal text-gray-700"
+                                                    value={editingUnitValue}
+                                                    onChange={e => setEditingUnitValue(e.target.value)}
+                                                    onBlur={() => handleEditUnit(unit.id)}
+                                                    onKeyDown={e => e.key === 'Enter' && handleEditUnit(unit.id)}
+                                                    onClick={e => e.stopPropagation()}
+                                                />
+                                            ) : (
+                                                <span className="text-sm truncate mr-2">{unit.name}</span>
+                                            )}
+                                            
+                                            {canEdit && (
+                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button 
+                                                        onClick={(e) => { 
+                                                            e.stopPropagation(); 
+                                                            setEditingUnitId(unit.id); 
+                                                            setEditingUnitValue(unit.name);
+                                                        }}
+                                                        className="text-gray-400 hover:text-blue-500 hover:bg-white p-1 rounded transition-colors"
+                                                    >
+                                                        <Edit2 size={12}/>
+                                                    </button>
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); handleDeleteUnit(unit.id); }}
+                                                        className="text-gray-400 hover:text-red-500 hover:bg-white p-1 rounded transition-colors"
+                                                    >
+                                                        <Trash2 size={12}/>
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                    {(!settings.units || settings.units.length === 0) && (
+                                        <div className="text-center py-4 text-xs text-gray-400 italic">Nenhum núcleo.</div>
                                     )}
                                 </div>
-                            ))}
-                            {sectors.length === 0 && (
-                                <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-                                    <MapPin size={32} className="mx-auto text-gray-300 mb-2"/>
-                                    <p className="text-sm text-gray-500">Nenhum setor cadastrado.</p>
+                            </div>
+
+                            {/* Lista de Setores do Núcleo Selecionado */}
+                            <div className="w-1/2 flex flex-col bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+                                <div className="bg-gray-100 px-3 py-2 text-xs font-bold text-gray-500 uppercase border-b border-gray-200">
+                                    Setores vinculados
                                 </div>
-                            )}
+                                <div className="flex flex-col flex-1 p-2">
+                                    {selectedUnitId ? (
+                                        <>
+                                            {canEdit && (
+                                                <div className="flex gap-2 mb-2">
+                                                    <input
+                                                        type="text"
+                                                        value={newUnitSectorName}
+                                                        onChange={(e) => setNewUnitSectorName(e.target.value)}
+                                                        placeholder="Novo setor..."
+                                                        className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-gdf-primary outline-none"
+                                                    />
+                                                    <button onClick={() => handleAddUnitSector(selectedUnitId)} className="bg-green-600 text-white px-2 rounded hover:bg-green-700">
+                                                        <Plus size={16}/>
+                                                    </button>
+                                                </div>
+                                            )}
+                                            <div className="overflow-y-auto flex-1 space-y-1">
+                                                {settings.units?.find(u => u.id === selectedUnitId)?.sectors.map(sector => (
+                                                    <div key={sector} className="bg-white border rounded p-2 flex justify-between items-center text-sm text-gray-600 group">
+                                                        {editingSector?.unitId === selectedUnitId && editingSector?.oldName === sector ? (
+                                                            <input 
+                                                                autoFocus
+                                                                className="w-full bg-white border border-blue-400 rounded px-1 py-0.5 text-xs font-normal text-gray-700"
+                                                                value={editingSectorValue}
+                                                                onChange={e => setEditingSectorValue(e.target.value)}
+                                                                onBlur={() => handleEditSector(selectedUnitId, sector)}
+                                                                onKeyDown={e => e.key === 'Enter' && handleEditSector(selectedUnitId, sector)}
+                                                            />
+                                                        ) : (
+                                                            <span className="truncate">{sector}</span>
+                                                        )}
+                                                        
+                                                        {canEdit && (
+                                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                <button 
+                                                                    onClick={() => {
+                                                                        setEditingSector({unitId: selectedUnitId, oldName: sector});
+                                                                        setEditingSectorValue(sector);
+                                                                    }}
+                                                                    className="text-gray-400 hover:text-blue-500 hover:bg-gray-50 p-1 rounded transition-colors"
+                                                                >
+                                                                    <Edit2 size={12}/>
+                                                                </button>
+                                                                <button 
+                                                                    onClick={() => handleDeleteUnitSector(selectedUnitId, sector)}
+                                                                    className="text-gray-400 hover:text-red-500 hover:bg-gray-50 p-1 rounded transition-colors"
+                                                                >
+                                                                    <X size={12}/>
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                                {settings.units?.find(u => u.id === selectedUnitId)?.sectors.length === 0 && (
+                                                    <div className="text-center py-4 text-xs text-gray-400 italic">Nenhum setor adicionado.</div>
+                                                )}
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="flex flex-1 items-center justify-center text-center px-4 text-xs text-gray-400 italic">
+                                            Selecione um núcleo para ver e gerenciar os setores.
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -460,6 +666,15 @@ const Settings: React.FC<SettingsProps> = ({ canEdit, professionalCategories, se
                     ))}
                 </div>
             </div>
+
+            {/* Deletion Confirm Modal */}
+            <ConfirmModal 
+                isOpen={confirmModal.isOpen}
+                title={confirmModal.title}
+                message={confirmModal.message}
+                onConfirm={confirmModal.onConfirm}
+                onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+            />
 
             {/* Reassignment Modal */}
             {categoryToDelete && (

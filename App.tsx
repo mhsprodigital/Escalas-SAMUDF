@@ -71,6 +71,7 @@ const App: React.FC = () => {
             // Master always ADMIN
             if (user.email?.toLowerCase() === 'mhs.pro.digital@gmail.com') {
                 setUserRole('ADMIN');
+                setUserUnitAccess(null);
                 setIsAuthChecking(false);
                 return;
             }
@@ -79,8 +80,10 @@ const App: React.FC = () => {
             const systemUser = await getSystemUserByEmail(user.email || '');
             if (systemUser) {
                 setUserRole(systemUser.role);
+                setUserUnitAccess(systemUser.unitAccess || null);
             } else {
                 setUserRole('VIEWER');
+                setUserUnitAccess(null);
             }
             setIsAuthChecking(false);
         };
@@ -93,6 +96,7 @@ const App: React.FC = () => {
     
     // Sidebar state
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+    const [userUnitAccess, setUserUnitAccess] = useState<string | null>(null);
 
     useEffect(() => {
         if (!user) return;
@@ -190,7 +194,9 @@ const App: React.FC = () => {
                        oldA.duration !== newA.duration ||
                        oldA.category !== newA.category ||
                        oldA.seiProcess !== newA.seiProcess ||
-                       oldA.isManualLock !== newA.isManualLock;
+                       oldA.isManualLock !== newA.isManualLock ||
+                       oldA.allocation?.id !== newA.allocation?.id ||
+                       oldA.allocation?.type !== newA.allocation?.type;
             });
             const newIds = new Set(newAssignments.map(a => a.id));
             const deletedIds = assignments
@@ -218,12 +224,41 @@ const App: React.FC = () => {
         }
     };
 
-    if (isAuthChecking) {
+    // Filtering state
+    const [globalUnitFilter, setGlobalUnitFilter] = useState<string>('Todos');
+    const [globalSectorFilter, setGlobalSectorFilter] = useState<string>('Todos');
+
+    // Force unit filter if user has limited access
+    const effectiveUnitFilter = userUnitAccess || globalUnitFilter;
+
+    useEffect(() => {
+        // Reset sector when unit changes
+        setGlobalSectorFilter('Todos');
+    }, [effectiveUnitFilter]);
+
+    const accessibleEmployees = useMemo(() => {
+        let filtered = employees;
+        if (effectiveUnitFilter && effectiveUnitFilter !== 'Todos') {
+            filtered = filtered.filter(emp => emp.unit === effectiveUnitFilter);
+        }
+        if (globalSectorFilter && globalSectorFilter !== 'Todos') {
+            filtered = filtered.filter(emp => emp.sector === globalSectorFilter);
+        }
+        return filtered;
+    }, [employees, effectiveUnitFilter, globalSectorFilter]);
+
+    const accessibleAssignments = useMemo(() => {
+        if (effectiveUnitFilter === 'Todos' && globalSectorFilter === 'Todos') return assignments;
+        const accessibleIds = new Set(accessibleEmployees.map(e => e.id));
+        return assignments.filter(a => accessibleIds.has(a.employeeId));
+    }, [assignments, accessibleEmployees, effectiveUnitFilter, globalSectorFilter]);
+
+    if (isAuthChecking || !settings) {
         return (
             <div className="flex items-center justify-center h-screen w-full bg-gray-100">
                 <div className="flex flex-col items-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gdf-primary mb-4"></div>
-                    <p className="text-gray-500">Verificando autenticação...</p>
+                    <p className="text-gray-500">Verificando autenticação e carregando dados...</p>
                 </div>
             </div>
         );
@@ -302,7 +337,7 @@ const App: React.FC = () => {
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-gray-200">
-                                    {[...employees].sort((a,b) => (a.name || '').localeCompare(b.name || '')).map(emp => (
+                                    {[...accessibleEmployees].sort((a,b) => (a.name || '').localeCompare(b.name || '')).map(emp => (
                                         <tr key={emp.id} className="hover:bg-blue-50 transition-colors">
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <div className="flex items-center">
@@ -351,9 +386,9 @@ const App: React.FC = () => {
                                             </td>
                                         </tr>
                                     ))}
-                                    {employees.length === 0 && (
+                                    {accessibleEmployees.length === 0 && (
                                         <tr>
-                                            <td colSpan={5} className="px-6 py-12 text-center text-gray-400 bg-gray-50 border-dashed border-2 border-gray-200 rounded-lg m-4">
+                                            <td colSpan={6} className="px-6 py-12 text-center text-gray-400 bg-gray-50 border-dashed border-2 border-gray-200 rounded-lg m-4">
                                                 <Users size={48} className="mx-auto mb-2 opacity-20" />
                                                 <p>Nenhum servidor cadastrado.</p>
                                                 <p className="text-sm">Clique em "Novo Servidor" para começar.</p>
@@ -367,21 +402,23 @@ const App: React.FC = () => {
                 );
 
             case ViewState.STAFF_FORM:
-                if (!canEdit) return <Dashboard employees={employees} assignments={assignments} startDate={currentWeekStart} shiftDefs={settings.shiftDefs} />;
+                if (!canEdit) return <Dashboard employees={accessibleEmployees} assignments={accessibleAssignments} startDate={currentWeekStart} shiftDefs={settings.shiftDefs} />;
                 return (
                     <StaffForm 
                         onSave={handleSaveEmployee} 
                         onCancel={() => setView(ViewState.STAFF_LIST)} 
                         initialData={editingEmployee}
                         professionalCategories={professionalCategories}
+                        units={settings?.units || []}
+                        restrictedUnit={userUnitAccess}
                     />
                 );
 
             case ViewState.SCALE:
                 return (
                     <ScaleGrid 
-                        employees={employees}
-                        assignments={assignments}
+                        employees={accessibleEmployees}
+                        assignments={accessibleAssignments}
                         onAssignmentChange={handleAssignmentsChange}
                         onAssignmentDelete={handleAssignmentDelete}
                         startDate={currentWeekStart}
@@ -392,23 +429,23 @@ const App: React.FC = () => {
                 );
             
             case ViewState.SETTINGS:
-                if (!isAdmin) return <Dashboard employees={employees} assignments={assignments} startDate={currentWeekStart} shiftDefs={settings.shiftDefs} professionalCategories={professionalCategories} setProfessionalCategories={setProfessionalCategories} />;
-                return <Settings canEdit={isAdmin} professionalCategories={professionalCategories} setProfessionalCategories={setProfessionalCategories} employees={employees} />;
+                if (!isAdmin) return <Dashboard employees={accessibleEmployees} assignments={accessibleAssignments} startDate={currentWeekStart} shiftDefs={settings.shiftDefs} professionalCategories={professionalCategories} setProfessionalCategories={setProfessionalCategories} />;
+                return <Settings canEdit={isAdmin} professionalCategories={professionalCategories} setProfessionalCategories={setProfessionalCategories} employees={accessibleEmployees} />;
 
             case ViewState.ACCESS_MANAGEMENT:
-                if (!isAdmin) return <Dashboard employees={employees} assignments={assignments} startDate={currentWeekStart} shiftDefs={settings.shiftDefs} />;
+                if (!isAdmin) return <Dashboard employees={accessibleEmployees} assignments={accessibleAssignments} startDate={currentWeekStart} shiftDefs={settings.shiftDefs} />;
                 return <AccessManagement />;
 
             case ViewState.RULES:
-                if (!isAdmin) return <Dashboard employees={employees} assignments={assignments} startDate={currentWeekStart} shiftDefs={settings.shiftDefs} />;
+                if (!isAdmin) return <Dashboard employees={accessibleEmployees} assignments={accessibleAssignments} startDate={currentWeekStart} shiftDefs={settings.shiftDefs} />;
                 return <RulesView />;
 
             case ViewState.REPORTS:
-                if (!canEdit) return <Dashboard employees={employees} assignments={assignments} startDate={currentWeekStart} shiftDefs={settings.shiftDefs} />;
+                if (!canEdit) return <Dashboard employees={accessibleEmployees} assignments={accessibleAssignments} startDate={currentWeekStart} shiftDefs={settings.shiftDefs} />;
                 return (
                     <ReportsView 
-                        employees={employees}
-                        assignments={assignments}
+                        employees={accessibleEmployees}
+                        assignments={accessibleAssignments}
                         startDate={currentWeekStart}
                         shiftDefs={settings.shiftDefs}
                         vehicles={vehicles}
@@ -419,11 +456,11 @@ const App: React.FC = () => {
                 );
 
             case ViewState.DOSSIER:
-                if (!canEdit) return <Dashboard employees={employees} assignments={assignments} startDate={currentWeekStart} shiftDefs={settings.shiftDefs} />;
+                if (!canEdit) return <Dashboard employees={accessibleEmployees} assignments={accessibleAssignments} startDate={currentWeekStart} shiftDefs={settings.shiftDefs} />;
                 return (
                     <DossierView 
-                        employees={employees}
-                        assignments={assignments}
+                        employees={accessibleEmployees}
+                        assignments={accessibleAssignments}
                         shiftDefs={settings.shiftDefs}
                     />
                 );
@@ -560,9 +597,33 @@ const App: React.FC = () => {
                         </button>
                     </div>
                     <div className="flex-1 flex justify-end items-center gap-4">
-                        <div className="text-right">
-                            <p className="text-sm font-bold text-gray-900">{user?.displayName || 'Gestor de Setor'}</p>
-                            <p className="text-xs text-gray-500">{user?.email || 'Acesso Restrito'}</p>
+                        
+                        <div className="hidden md:flex items-center gap-2 mr-4 bg-gray-50 p-1.5 rounded-lg border border-gray-200">
+                            {!userUnitAccess && (
+                                <select 
+                                    className="text-xs font-semibold bg-white border border-gray-300 rounded px-2 py-1 text-gray-700 outline-none focus:ring-1 focus:ring-gdf-primary"
+                                    value={globalUnitFilter}
+                                    onChange={(e) => setGlobalUnitFilter(e.target.value)}
+                                >
+                                    <option value="Todos">Todos os Núcleos</option>
+                                    {settings?.units?.map((u: any) => <option key={u.id} value={u.name}>{u.name}</option>)}
+                                </select>
+                            )}
+                            <select 
+                                className="text-xs font-semibold bg-white border border-gray-300 rounded px-2 py-1 text-gray-700 outline-none focus:ring-1 focus:ring-gdf-primary"
+                                value={globalSectorFilter}
+                                onChange={(e) => setGlobalSectorFilter(e.target.value)}
+                            >
+                                <option value="Todos">Todos os Setores{effectiveUnitFilter !== 'Todos' ? ` do Núcleo` : ''}</option>
+                                {settings?.units?.find((u: any) => u.name === effectiveUnitFilter)?.sectors?.map((s: string) => (
+                                    <option key={s} value={s}>{s}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="text-right flex flex-col justify-center">
+                            <p className="text-sm font-bold text-gray-900 leading-tight">{user?.displayName || 'Gestor de Setor'}</p>
+                            <p className="text-[10px] text-gray-500 font-medium">Núcleo: {userUnitAccess || 'Acesso Restrito'}</p>
                         </div>
                         <div 
                             className="h-10 w-10 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center cursor-pointer hover:bg-gray-200 transition"

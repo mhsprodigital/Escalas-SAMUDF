@@ -223,6 +223,15 @@ export const SHIFT_DEFINITIONS: Record<string, ShiftDefinition> = {
     'BH-5':   { code: 'BH-5', label: 'BH- 5h', start: '', end: '', hours: -5, category: 'Banco de Horas' },
     'BH-6':   { code: 'BH-6', label: 'BH- 6h', start: '', end: '', hours: -6, category: 'Banco de Horas' },
     'BH-12':  { code: 'BH-12', label: 'BH- 12h', start: '', end: '', hours: -12, category: 'Banco de Horas' },
+
+    // ==========================================
+    // 9. ATIVIDADE EXTERNA / CESSÃO (EX)
+    // Contabiliza carga horária na escala mensal, mas não conta como assistencial.
+    // ==========================================
+    'EX4':    { code: 'EX4', label: 'EX4 (Ext/Curso)', start: '08:00', end: '12:00', hours: 4, category: 'Atividade Não Assistencial' },
+    'EX5':    { code: 'EX5', label: 'EX5 (Ext/Curso)', start: '08:00', end: '13:00', hours: 5, category: 'Atividade Não Assistencial' },
+    'EX6':    { code: 'EX6', label: 'EX6 (Ext/Curso)', start: '08:00', end: '14:00', hours: 6, category: 'Atividade Não Assistencial' },
+    'EX12':   { code: 'EX12', label: 'EX12 (Ext/Curso)', start: '07:00', end: '19:00', hours: 12, category: 'Atividade Não Assistencial' },
 };
 
 export const AVATAR_COLORS = [

@@ -6,7 +6,7 @@ export interface ShiftDefinition {
     start: string;
     end: string;
     hours: number;
-    category: 'Manhã' | 'Tarde' | 'Noite' | 'Afastamento' | 'Bloqueio' | 'Legenda Especial' | 'Banco de Horas';
+    category: 'Manhã' | 'Tarde' | 'Noite' | 'Afastamento' | 'Bloqueio' | 'Legenda Especial' | 'Banco de Horas' | 'Atividade Não Assistencial';
 }
 
 export interface EmployeePreferences {
@@ -36,6 +36,7 @@ export interface Employee {
     // Novas propriedades para gestão de contratos
     employmentType?: 'Efetivo' | 'Temporário';
     contractExpiry?: string | null; // Data no formato YYYY-MM-DD
+    isTpdOnly?: boolean; // Se verdadeiro, o servidor não possui carga horária contratual na unidade e as pendências são ignoradas.
 }
 
 export interface Vehicle {
@@ -85,5 +86,6 @@ export interface SystemUser {
     email: string;
     displayName: string;
     role: UserRole;
+    unitAccess?: string; // ID of the Nucleus (Unit) they can access. empty/null means all.
     createdAt: string;
 }

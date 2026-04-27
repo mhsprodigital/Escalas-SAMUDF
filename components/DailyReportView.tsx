@@ -28,17 +28,89 @@ const DailyReportView: React.FC<DailyReportViewProps> = ({ employees = [], assig
     const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
     const [selectedShift, setSelectedShift] = useState<string>('Todos');
 
+    const [selectedAssignments, setSelectedAssignments] = useState<string[]>([]);
+    const [bulkAllocationType, setBulkAllocationType] = useState<'VEHICLE' | 'SECTOR' | ''>('');
+    const [bulkAllocationId, setBulkAllocationId] = useState<string>('');
+
     // Filter assignments for the selected day and shift
     const dailyAssignments = useMemo(() => {
         return assignments.filter(a => {
             if (a.date !== selectedDate || a.shiftCode === 'BLK') return false;
+            
+            const def = shiftDefs[a.shiftCode];
+            const cat = a.category || def?.category;
+
             if (selectedShift !== 'Todos') {
-                const def = shiftDefs[a.shiftCode];
-                if (!def || def.category !== selectedShift) return false;
+                if (selectedShift === 'Manhã' || selectedShift === 'Tarde' || selectedShift === 'Noite') {
+                    let isM = cat === 'Manhã';
+                    let isT = cat === 'Tarde';
+                    let isN = cat === 'Noite';
+
+                    if (cat === 'Legenda Especial' || a.shiftCode.includes('ST6 SN12') || a.shiftCode.includes('SM6 ST6')) {
+                        if (a.shiftCode.includes('SM6 ST6')) {
+                             isM = true; isT = true;
+                        } else if (a.shiftCode.includes('ST6 SN12')) {
+                             isT = true; isN = true;
+                        } else {
+                             if (a.shiftCode.includes('M')) isM = true;
+                             if (a.shiftCode.includes('T') && !a.shiftCode.includes('ST6 SN12')) isT = true;
+                             if (a.shiftCode.includes('N')) isN = true;
+                        }
+                    }
+
+                    if (selectedShift === 'Manhã' && !isM) return false;
+                    if (selectedShift === 'Tarde' && !isT) return false;
+                    if (selectedShift === 'Noite' && !isN) return false;
+                } else {
+                    if (cat !== selectedShift) return false;
+                }
             }
             return true;
         });
     }, [assignments, selectedDate, selectedShift, shiftDefs]);
+
+    // Cleanup selected assignments if dailyAssignments changes
+    React.useEffect(() => {
+        setSelectedAssignments([]);
+    }, [dailyAssignments]);
+
+    const toggleSelection = (id: string) => {
+        setSelectedAssignments(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
+    };
+
+    const toggleAll = (ids: string[]) => {
+        const allSelected = ids.every(id => selectedAssignments.includes(id));
+        if (allSelected) {
+            setSelectedAssignments(prev => prev.filter(id => !ids.includes(id)));
+        } else {
+            const newSelections = [...selectedAssignments];
+            ids.forEach(id => {
+                if (!newSelections.includes(id)) newSelections.push(id);
+            });
+            setSelectedAssignments(newSelections);
+        }
+    };
+
+    const handleBulkAssign = () => {
+        if (!bulkAllocationType || !bulkAllocationId || selectedAssignments.length === 0) return;
+        
+        const updatedAssignments = assignments.map(a => {
+            if (selectedAssignments.includes(a.id)) {
+                return {
+                    ...a,
+                    allocation: {
+                        type: bulkAllocationType as 'VEHICLE' | 'SECTOR',
+                        id: bulkAllocationId
+                    }
+                };
+            }
+            return a;
+        });
+
+        onAssignmentsChange(updatedAssignments);
+        setSelectedAssignments([]);
+        setBulkAllocationId('');
+    };
 
     // Group by professional category
     const onDutyByRole = useMemo(() => {
@@ -52,8 +124,9 @@ const DailyReportView: React.FC<DailyReportViewProps> = ({ employees = [], assig
             const emp = employees.find(e => e.id === a.employeeId);
             const def = shiftDefs[a.shiftCode];
             
+            const cat = a.category || def?.category;
             // Filtra banco de horas e afastamentos da escala de assistência diária
-            if (emp && def && def.category !== 'Afastamento' && def.category !== 'Banco de Horas') {
+            if (emp && def && cat !== 'Afastamento' && cat !== 'Banco de Horas' && cat !== 'Atividade Não Assistencial') {
                 if (!result[emp.role]) {
                     result[emp.role] = [];
                 }
@@ -235,6 +308,56 @@ const DailyReportView: React.FC<DailyReportViewProps> = ({ employees = [], assig
                     </div>
                 ) : (
                     <div className="space-y-8">
+                        {/* Bulk Assign Panel */}
+                        {canEdit && selectedAssignments.length > 0 && (
+                            <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4 sticky top-4 z-10 shadow-md">
+                                <div className="text-sm">
+                                    <span className="font-bold text-blue-800">{selectedAssignments.length}</span> servidores selecionados.
+                                    Escolha onde alocá-los:
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <select
+                                        className="border border-gray-300 rounded text-sm p-2 bg-white flex-1 md:w-64 focus:ring-1 focus:ring-gdf-primary"
+                                        value={bulkAllocationType ? `${bulkAllocationType}_${bulkAllocationId}` : ''}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (val === '') {
+                                                setBulkAllocationType('');
+                                                setBulkAllocationId('');
+                                            } else {
+                                                const [type, id] = val.split('_');
+                                                setBulkAllocationType(type as 'VEHICLE' | 'SECTOR');
+                                                setBulkAllocationId(id);
+                                            }
+                                        }}
+                                    >
+                                        <option value="">Selecione Viatura/Setor...</option>
+                                        <optgroup label="Viaturas">
+                                            {vehicles.map(v => (
+                                                <option key={`VEHICLE_${v.id}`} value={`VEHICLE_${v.id}`} disabled={v.isBlocked}>
+                                                    {v.code} - {v.name} {v.isBlocked ? '(Bloqueada)' : ''}
+                                                </option>
+                                            ))}
+                                        </optgroup>
+                                        <optgroup label="Setores">
+                                            {sectors.map(sec => (
+                                                <option key={`SECTOR_${sec.id}`} value={`SECTOR_${sec.id}`}>
+                                                    {sec.name}
+                                                </option>
+                                            ))}
+                                        </optgroup>
+                                    </select>
+                                    <button 
+                                        onClick={handleBulkAssign}
+                                        disabled={!bulkAllocationType || !bulkAllocationId}
+                                        className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition"
+                                    >
+                                        Distribuir Todos
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         {/* Allocation Summary */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
@@ -316,6 +439,16 @@ const DailyReportView: React.FC<DailyReportViewProps> = ({ employees = [], assig
                                         <table className="min-w-full divide-y divide-gray-200 border">
                                             <thead className="bg-white">
                                                 <tr>
+                                                    {canEdit && (
+                                                        <th className="px-4 py-2 text-left w-10">
+                                                            <input 
+                                                                type="checkbox"
+                                                                className="rounded border-gray-300 text-gdf-primary focus:ring-gdf-primary"
+                                                                checked={staff.length > 0 && staff.every(s => selectedAssignments.includes(s.assignment.id))}
+                                                                onChange={() => toggleAll(staff.map(s => s.assignment.id))}
+                                                            />
+                                                        </th>
+                                                    )}
                                                     <th className="px-4 py-2 text-left text-xs font-bold text-gray-500 uppercase">Servidor</th>
                                                     <th className="px-4 py-2 text-left text-xs font-bold text-gray-500 uppercase">Matrícula</th>
                                                     <th className="px-4 py-2 text-center text-xs font-bold text-gray-500 uppercase">Legenda</th>
@@ -326,7 +459,17 @@ const DailyReportView: React.FC<DailyReportViewProps> = ({ employees = [], assig
                                             </thead>
                                             <tbody className="divide-y divide-gray-100">
                                                 {staff.map((s, idx) => (
-                                                    <tr key={idx} className="hover:bg-blue-50">
+                                                    <tr key={idx} className={`hover:bg-blue-50 ${selectedAssignments.includes(s.assignment.id) ? 'bg-blue-50/50' : ''}`}>
+                                                        {canEdit && (
+                                                            <td className="px-4 py-2 text-center">
+                                                                <input 
+                                                                    type="checkbox"
+                                                                    className="rounded border-gray-300 text-gdf-primary focus:ring-gdf-primary"
+                                                                    checked={selectedAssignments.includes(s.assignment.id)}
+                                                                    onChange={() => toggleSelection(s.assignment.id)}
+                                                                />
+                                                            </td>
+                                                        )}
                                                         <td className="px-4 py-2 text-sm font-medium text-gray-900">
                                                             <div className="flex items-center gap-2">
                                                                 <div className={`w-6 h-6 rounded-full ${s.employee.colorIdentifier} flex items-center justify-center text-white text-[10px] font-bold`}>
