@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Employee, ShiftAssignment, ShiftDefinition } from '../types';
-import { Search, FileText, UserSquare, Calendar, ChevronDown, ChevronRight, FileDigit } from 'lucide-react';
+import { Search, FileText, UserSquare, Calendar, ChevronDown, ChevronRight, FileDigit, Filter } from 'lucide-react';
 
 interface DossierViewProps {
     employees: Employee[];
@@ -13,6 +13,12 @@ const DossierView: React.FC<DossierViewProps> = ({ employees, assignments, shift
     const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
     const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
+    const [filterMonth, setFilterMonth] = useState<number | 'Todos'>('Todos');
+    const [filterYear, setFilterYear] = useState<number | 'Todos'>('Todos');
+    const [filterType, setFilterType] = useState<string>('Todos');
+
+    const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
     const filteredEmployees = useMemo(() => {
         return employees
             .filter(emp => emp.name.toLowerCase().includes(searchTerm.toLowerCase()) || emp.role.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -23,24 +29,59 @@ const DossierView: React.FC<DossierViewProps> = ({ employees, assignments, shift
         return employees.find(e => e.id === selectedEmployeeId);
     }, [employees, selectedEmployeeId]);
 
+    const availableYears = useMemo(() => {
+        if (!selectedEmployeeId) return [];
+        const years = new Set<number>();
+        assignments.forEach(a => {
+            if (a.employeeId === selectedEmployeeId) {
+                years.add(new Date(a.date + 'T00:00:00').getFullYear());
+            }
+        });
+        const currentYear = new Date().getFullYear();
+        years.add(currentYear); // Ensure at least current year is present
+        return Array.from(years).sort((a, b) => b - a);
+    }, [assignments, selectedEmployeeId]);
+
+    const availableTypes = useMemo(() => {
+        if (!selectedEmployeeId) return [];
+        const types = new Set<string>();
+        assignments.forEach(a => {
+             if (a.employeeId === selectedEmployeeId) {
+                 const def = shiftDefs[a.shiftCode];
+                 const cat = a.category || def?.category || 'Desconhecida';
+                 if (!['Manhã', 'Tarde', 'Noite'].includes(cat)) {
+                     types.add(cat);
+                 }
+             }
+        });
+        return Array.from(types).sort();
+    }, [assignments, selectedEmployeeId, shiftDefs]);
+
     const employeeEvents = useMemo(() => {
         if (!selectedEmployeeId) return [];
 
         return assignments
             .filter(a => {
                 if (a.employeeId !== selectedEmployeeId) return false;
+                
+                const aDate = new Date(a.date + 'T00:00:00');
+                if (filterMonth !== 'Todos' && aDate.getMonth() !== filterMonth) return false;
+                if (filterYear !== 'Todos' && aDate.getFullYear() !== filterYear) return false;
+
                 const def = shiftDefs[a.shiftCode];
-                const category = a.category || def?.category;
-                // Ignorar turnos regulares
-                if (['Manhã', 'Tarde', 'Noite'].includes(category || '')) return false;
-                // Ignorar bloqueios na contagem se for apenas 'BLK', mas talvez interessem? Melhor deixar ou remover? 
-                // Se for só BLK sem SEI, podemos remover para não poluir. Mas como a regra engloba "tudo que não é serviço", vamos deixá-los.
-                // Na verdade, bloqueios são técnicos. Vamos ignorá-los se não tiverem processo SEI para focar no servidor.
-                if (a.shiftCode === 'BLK' && !a.seiProcess) return false;
+                const category = a.category || def?.category || 'Desconhecida';
+
+                // Ignorar turnos regulares da escala padrão
+                if (['Manhã', 'Tarde', 'Noite'].includes(category)) return false;
+
+                if (filterType !== 'Todos' && category !== filterType && a.shiftCode !== filterType) return false;
+
+                if (a.shiftCode === 'BLK' && !a.seiProcess && filterType !== 'Bloqueio') return false;
+
                 return true;
             })
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [assignments, selectedEmployeeId, shiftDefs]);
+    }, [assignments, selectedEmployeeId, shiftDefs, filterMonth, filterYear, filterType]);
 
     const toggleRow = (eventId: string) => {
         const newExpanded = new Set(expandedRows);
@@ -179,8 +220,40 @@ const DossierView: React.FC<DossierViewProps> = ({ employees, assignments, shift
                         <div className="flex-1 overflow-auto bg-white p-6">
                             <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                                 <FileText size={20} className="text-gdf-primary" />
-                                Histórico de Eventos e Afastamentos
+                                Toda Vida Funcional (Histórico)
                             </h3>
+
+                            <div className="flex flex-wrap items-center gap-4 mb-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                <div className="flex items-center gap-2 text-gray-500">
+                                    <Filter size={16} />
+                                    <span className="text-sm font-semibold">Filtros:</span>
+                                </div>
+                                <select 
+                                    value={filterMonth}
+                                    onChange={e => setFilterMonth(e.target.value === 'Todos' ? 'Todos' : parseInt(e.target.value))}
+                                    className="text-sm border-gray-300 rounded shadow-sm focus:ring-gdf-primary focus:border-gdf-primary bg-white py-1.5"
+                                >
+                                    <option value="Todos">Todos os Meses</option>
+                                    {months.map((m, idx) => <option key={m} value={idx}>{m}</option>)}
+                                </select>
+                                <select 
+                                    value={filterYear}
+                                    onChange={e => setFilterYear(e.target.value === 'Todos' ? 'Todos' : parseInt(e.target.value))}
+                                    className="text-sm border-gray-300 rounded shadow-sm focus:ring-gdf-primary focus:border-gdf-primary bg-white py-1.5"
+                                >
+                                    <option value="Todos">Todos os Anos</option>
+                                    {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+                                </select>
+                                <select 
+                                    value={filterType}
+                                    onChange={e => setFilterType(e.target.value)}
+                                    className="text-sm border-gray-300 rounded shadow-sm focus:ring-gdf-primary focus:border-gdf-primary bg-white py-1.5"
+                                >
+                                    <option value="Todos">Todos os Eventos/Legendas</option>
+                                    {availableTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                                    <option value="Bloqueio">Bloqueios (Técnicos)</option>
+                                </select>
+                            </div>
                             
                             {employeeEvents.length > 0 ? (
                                 <div className="border border-gray-200 rounded-lg overflow-hidden">

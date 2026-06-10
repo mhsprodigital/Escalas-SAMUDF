@@ -193,7 +193,7 @@ const App: React.FC = () => {
         }
     };
 
-    const handleAssignmentsChange = async (newAssignments: ShiftAssignment[]): Promise<boolean> => {
+    const handleAssignmentsChange = async (newAssignments: ShiftAssignment[], explicitlyDeletedIds?: string[]): Promise<boolean> => {
         try {
             const addedOrModified = newAssignments.filter(newA => {
                 const oldA = assignments.find(a => a.id === newA.id);
@@ -208,10 +208,11 @@ const App: React.FC = () => {
                        oldA.allocation?.id !== newA.allocation?.id ||
                        oldA.allocation?.type !== newA.allocation?.type;
             });
-            const newIds = new Set(newAssignments.map(a => a.id));
-            const deletedIds = accessibleAssignments
-                .filter(a => !newIds.has(a.id))
-                .map(a => a.id);
+            
+            let deletedIds: string[] = [];
+            if (explicitlyDeletedIds) {
+                deletedIds = explicitlyDeletedIds;
+            }
             
             if (addedOrModified.length > 0 || deletedIds.length > 0) {
                 console.log(`Saving changes: ${addedOrModified.length} added/modified, ${deletedIds.length} deleted.`);

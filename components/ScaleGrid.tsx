@@ -6,7 +6,7 @@ import { Search, Calendar, ChevronLeft, ChevronRight, Ban, Trash2, Lock, X, Mess
 interface ScaleGridProps {
     employees: Employee[];
     assignments: ShiftAssignment[];
-    onAssignmentChange: (newAssignments: ShiftAssignment[]) => void;
+    onAssignmentChange: (newAssignments: ShiftAssignment[], explicitlyDeletedIds?: string[]) => void;
     onAssignmentDelete: (id: string) => Promise<void>;
     startDate: Date; 
     shiftDefs: Record<string, ShiftDefinition>;
@@ -60,6 +60,7 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
     const [isSaving, setIsSaving] = useState(false);
     const [localAssignments, setLocalAssignments] = useState<ShiftAssignment[]>(assignments);
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+    const [localDeletedIds, setLocalDeletedIds] = useState<string[]>([]);
 
     // Sync from props (Firestore) unless there are unsaved local changes
     useEffect(() => {
@@ -223,9 +224,10 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
     const handleSaveChanges = async () => {
         setIsSaving(true);
         // onAssignmentChange agora retorna booleano de sucesso
-        const success = await onAssignmentChange(localAssignments) as unknown as boolean;
+        const success = await onAssignmentChange(localAssignments, localDeletedIds) as unknown as boolean;
         if (success !== false) {
             setHasUnsavedChanges(false);
+            setLocalDeletedIds([]);
         }
         setIsSaving(false);
     };
@@ -282,11 +284,14 @@ const ScaleGrid: React.FC<ScaleGridProps> = ({ employees, assignments, onAssignm
 
     const handleRemoveAssignment = async (assignmentId: string) => {
         const remaining = localAssignments.filter(a => a.id !== assignmentId);
+        setLocalDeletedIds(prev => [...prev, assignmentId]);
         handleLocalAssignmentChange(remaining);
     };
 
     const handleClearDay = useCallback((empId: string, dateStr: string) => {
+        const toDeleteIds = localAssignments.filter(a => a.employeeId === empId && a.date === dateStr).map(a => a.id);
         const remaining = localAssignments.filter(a => !(a.employeeId === empId && a.date === dateStr));
+        setLocalDeletedIds(prev => [...prev, ...toDeleteIds]);
         handleLocalAssignmentChange(remaining);
     }, [localAssignments]);
 
